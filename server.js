@@ -36,7 +36,7 @@ class Player {
         this.lastAttackTime = 0;
         this.dx = 0;
         this.dy = 0;
-        this.speed = 200;
+        this.speed = 140; // Reducido para movimiento más suave
         this.alive = true;
     }
 
