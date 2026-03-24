@@ -36,8 +36,19 @@ class Player {
         this.lastAttackTime = 0;
         this.dx = 0;
         this.dy = 0;
-        this.speed = 200; // Velocidad original
+        this.speed = 200;
         this.alive = true;
+        this.color = this.generateColor(id);
+    }
+
+    generateColor(id) {
+        let hash = 0;
+        for (let i = 0; i < id.length; i++) {
+            hash = ((hash << 5) - hash) + id.charCodeAt(i);
+            hash |= 0;
+        }
+        const hue = Math.abs(hash % 360);
+        return `hsl(${hue}, 70%, 55%)`;
     }
 
     takeDamage(amount) {
@@ -101,7 +112,6 @@ function updateMovement(deltaTime) {
         if (!p.alive) continue;
         p.x += p.dx * p.speed * deltaTime;
         p.y += p.dy * p.speed * deltaTime;
-        // Límites con radio de jugador
         p.x = Math.min(Math.max(p.x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
         p.y = Math.min(Math.max(p.y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
     }
@@ -128,7 +138,6 @@ function handleCollisionsAndCombat(now) {
                 let newY1 = p1.y + moveY;
                 let newX2 = p2.x - moveX;
                 let newY2 = p2.y - moveY;
-                // Aplicar límites después de separar
                 p1.x = Math.min(Math.max(newX1, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
                 p1.y = Math.min(Math.max(newY1, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
                 p2.x = Math.min(Math.max(newX2, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
@@ -212,7 +221,7 @@ function broadcastGameState() {
         players: {},
         zone: { x: zoneCenter.x, y: zoneCenter.y, radius: zoneRadius },
         aliveCount: Object.values(players).filter(p => p.alive).length,
-        timestamp: Date.now() // para calcular ping
+        timestamp: Date.now()
     };
     for (let id in players) {
         const p = players[id];
@@ -222,7 +231,8 @@ function broadcastGameState() {
             y: p.y,
             health: p.health,
             alive: p.alive,
-            lastAttackTime: p.lastAttackTime
+            lastAttackTime: p.lastAttackTime,
+            color: p.color
         };
     }
     const message = JSON.stringify(state);
