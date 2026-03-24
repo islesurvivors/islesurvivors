@@ -205,34 +205,74 @@ function interpolate() {
     }
 }
 
+// Dibuja el suelo de arena con puntos que se mueven con la cámara
+function drawGround(camX, camY) {
+    // Fondo base de arena
+    ctx.fillStyle = "#e0b05a";
+    ctx.fillRect(camX, camY, canvas.width, canvas.height);
+    
+    // Variaciones de color (manchas)
+    ctx.globalAlpha = 0.3;
+    for (let i = 0; i < 300; i++) {
+        ctx.fillStyle = `hsl(45, 70%, ${30 + Math.random() * 40}%)`;
+        ctx.fillRect(
+            camX + Math.random() * canvas.width,
+            camY + Math.random() * canvas.height,
+            Math.random() * 30 + 10,
+            Math.random() * 30 + 10
+        );
+    }
+    ctx.globalAlpha = 1;
+    
+    // Dibujar cuadrícula de puntos para dar sensación de movimiento
+    const gridSpacing = 40;
+    const startX = Math.floor(camX / gridSpacing) * gridSpacing;
+    const startY = Math.floor(camY / gridSpacing) * gridSpacing;
+    
+    for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
+        for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
+            // Alternar tamaño y color para dar profundidad
+            const size = (Math.sin(x * 0.05) + Math.sin(y * 0.05)) * 2 + 3;
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fillStyle = `hsl(45, 70%, ${35 + (Math.sin(x * 0.03) * 5)})`;
+            ctx.fill();
+        }
+    }
+}
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    ctx.fillStyle = "#0a2f6c";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+    // Calcular cámara centrada en el jugador
     let camX = 0, camY = 0;
     if (myId && renderPlayers[myId]) {
-        camX = renderPlayers[myId].x - canvas.width/2;
-        camY = renderPlayers[myId].y - canvas.height/2;
+        camX = renderPlayers[myId].x - canvas.width / 2;
+        camY = renderPlayers[myId].y - canvas.height / 2;
     }
     
     ctx.save();
     ctx.translate(-camX, -camY);
     
+    // Dibujar el suelo (arena)
+    drawGround(camX, camY);
+    
+    // Zona segura (agua / círculo de protección)
     ctx.beginPath();
-    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI*2);
-    ctx.fillStyle = "rgba(0, 150, 200, 0.2)";
+    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
     ctx.fill();
-    ctx.strokeStyle = "rgba(0, 200, 255, 0.8)";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(0, 200, 255, 0.9)";
+    ctx.lineWidth = 4;
     ctx.stroke();
     
+    // Borde de peligro exterior
     ctx.beginPath();
-    ctx.arc(zone.x, zone.y, zone.radius + 5, 0, Math.PI*2);
-    ctx.strokeStyle = "rgba(255, 0, 0, 0.3)";
+    ctx.arc(zone.x, zone.y, zone.radius + 5, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
     ctx.stroke();
     
+    // Dibujar jugadores
     for (let id in renderPlayers) {
         const p = renderPlayers[id];
         if (!p.alive) continue;
@@ -244,29 +284,31 @@ function draw() {
         ctx.shadowColor = "rgba(0,0,0,0.5)";
         
         ctx.beginPath();
-        ctx.arc(p.x, p.y, radius, 0, Math.PI*2);
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = isMe ? "#88ff88" : "#ff6666";
         ctx.fill();
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
         ctx.stroke();
         
+        // Barra de vida
         const healthPercent = p.health / 100;
         const barWidth = 30;
         const barHeight = 6;
-        const barX = p.x - barWidth/2;
+        const barX = p.x - barWidth / 2;
         const barY = p.y - radius - 10;
         ctx.fillStyle = "#333";
         ctx.fillRect(barX, barY, barWidth, barHeight);
         ctx.fillStyle = "#ff3333";
         ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
         
+        // Cooldown de ataque (solo propio)
         if (isMe && lastAttackTime) {
             const now = Date.now() / 1000;
             const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
             if (cooldownRemaining > 0) {
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, radius + 3, 0, Math.PI * 2 * (1 - cooldownRemaining/attackCooldown));
+                ctx.arc(p.x, p.y, radius + 3, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
                 ctx.strokeStyle = "#ffaa44";
                 ctx.lineWidth = 3;
                 ctx.stroke();
@@ -275,13 +317,15 @@ function draw() {
         
         ctx.shadowBlur = 0;
         
+        // Etiqueta del jugador
         ctx.font = "12px Arial";
         ctx.fillStyle = "white";
-        ctx.fillText(id === myId ? "Tú" : `P${id}`, p.x-12, p.y-radius-12);
+        ctx.fillText(id === myId ? "Tú" : `P${id}`, p.x - 12, p.y - radius - 12);
     }
     
     ctx.restore();
     
+    // Textos de interfaz (fuera del mundo)
     ctx.font = "bold 14px monospace";
     ctx.fillStyle = "white";
     ctx.shadowBlur = 2;
