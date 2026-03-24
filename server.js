@@ -1,29 +1,26 @@
-const WebSocket = require('ws');
-const http = require('http');
-const express = require('express');
-const path = require('path');
+const express = require("express");
+const WebSocket = require("ws");
 
 const app = express();
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
-const server = http.createServer(app);
+const server = app.listen(process.env.PORT || 3000, () => {
+  console.log("Server running");
+});
+
 const wss = new WebSocket.Server({ server });
 
-// Configuración del mundo
 const WORLD_SIZE = 1600;
 const PLAYER_RADIUS = 15;
-const ATTACK_COOLDOWN = 0.8; // segundos
+const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
-const ZONE_SHRINK_TIME = 180; // 3 minutos para encogerse completamente
+const ZONE_SHRINK_TIME = 180;
 const ZONE_START_RADIUS = 700;
 const ZONE_MIN_RADIUS = 100;
 const ZONE_DAMAGE_PER_SECOND = 8;
 
 let players = {};
-let nextPlayerId = 1;
-let gameLoopInterval;
-let lastTimestamp = Date.now();
 let zoneCenter = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
 let zoneRadius = ZONE_START_RADIUS;
 let zoneShrinkStartTime = Date.now();
@@ -45,9 +42,7 @@ class Player {
 
     takeDamage(amount) {
         this.health = Math.max(0, this.health - amount);
-        if (this.health <= 0) {
-            this.alive = false;
-        }
+        if (this.health <= 0) this.alive = false;
         return this.health <= 0;
     }
 
@@ -64,7 +59,6 @@ class Player {
     }
 }
 
-// Resolver combate entre dos jugadores
 function resolveCombat(p1, p2, now) {
     if (!p1.alive || !p2.alive) return null;
     
@@ -74,7 +68,6 @@ function resolveCombat(p1, p2, now) {
     if (!p1CanAttack && !p2CanAttack) return null;
     
     let first, second;
-    // Determinar quién ataca primero (el que lleva más tiempo sin atacar)
     if (p1CanAttack && p2CanAttack) {
         if ((now - p1.lastAttackTime) > (now - p2.lastAttackTime)) {
             first = p1; second = p2;
@@ -89,13 +82,11 @@ function resolveCombat(p1, p2, now) {
     
     const result = { firstHit: null, secondHit: null };
     
-    // Primer golpe
     if (first) {
         const { damage, killed } = first.attack(second || (first === p1 ? p2 : p1), now);
         result.firstHit = { attacker: first.id, target: (first === p1 ? p2.id : p1.id), damage, killed };
     }
     
-    // Segundo golpe (solo si ambos podían atacar y el primero no mató al segundo)
     if (second && result.firstHit && !result.firstHit.killed) {
         const { damage, killed } = second.attack(first, now);
         result.secondHit = { attacker: second.id, target: first.id, damage, killed };
@@ -104,39 +95,30 @@ function resolveCombat(p1, p2, now) {
     return result;
 }
 
-// Mover jugadores
 function updateMovement(deltaTime) {
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
-        
         p.x += p.dx * p.speed * deltaTime;
         p.y += p.dy * p.speed * deltaTime;
-        
-        // Límites del mundo
         p.x = Math.min(Math.max(p.x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
         p.y = Math.min(Math.max(p.y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
     }
 }
 
-// Separar jugadores y detectar combates
 function handleCollisionsAndCombat(now) {
     const playerIds = Object.keys(players);
     for (let i = 0; i < playerIds.length; i++) {
         const p1 = players[playerIds[i]];
         if (!p1.alive) continue;
-        
         for (let j = i + 1; j < playerIds.length; j++) {
             const p2 = players[playerIds[j]];
             if (!p2.alive) continue;
-            
             const dx = p1.x - p2.x;
             const dy = p1.y - p2.y;
             const dist = Math.hypot(dx, dy);
             const minDist = PLAYER_RADIUS * 2;
-            
             if (dist < minDist) {
-                // Separar físicamente
                 const angle = Math.atan2(dy, dx);
                 const overlap = minDist - dist;
                 const moveX = Math.cos(angle) * overlap / 2;
@@ -145,24 +127,16 @@ function handleCollisionsAndCombat(now) {
                 p1.y += moveY;
                 p2.x -= moveX;
                 p2.y -= moveY;
-                
-                // Resolver combate
                 const combatResult = resolveCombat(p1, p2, now);
                 if (combatResult && (combatResult.firstHit || combatResult.secondHit)) {
-                    // Enviar evento de daño a los clientes afectados
-                    if (combatResult.firstHit) {
-                        sendDamageEvent(combatResult.firstHit);
-                    }
-                    if (combatResult.secondHit) {
-                        sendDamageEvent(combatResult.secondHit);
-                    }
+                    if (combatResult.firstHit) sendDamageEvent(combatResult.firstHit);
+                    if (combatResult.secondHit) sendDamageEvent(combatResult.secondHit);
                 }
             }
         }
     }
 }
 
-// Enviar evento de daño a los clientes relevantes
 function sendDamageEvent(hit) {
     const attacker = players[hit.attacker];
     const target = players[hit.target];
@@ -184,7 +158,6 @@ function sendDamageEvent(hit) {
     }
 }
 
-// Actualizar zona segura
 function updateZone(now) {
     const elapsed = (now - zoneShrinkStartTime) / 1000;
     const shrinkProgress = Math.min(1, elapsed / ZONE_SHRINK_TIME);
@@ -192,25 +165,18 @@ function updateZone(now) {
     zoneRadius = Math.max(ZONE_MIN_RADIUS, zoneRadius);
 }
 
-// Daño por estar fuera de la zona
 function applyZoneDamage(now) {
     if (now - lastZoneDamageTime < 1) return;
     lastZoneDamageTime = now;
-    
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
-        
         const dx = p.x - zoneCenter.x;
         const dy = p.y - zoneCenter.y;
         const distToCenter = Math.hypot(dx, dy);
-        
         if (distToCenter > zoneRadius) {
             const killed = p.takeDamage(ZONE_DAMAGE_PER_SECOND);
-            if (killed) {
-                // Notificar muerte
-                broadcastDeath(p.id);
-            }
+            if (killed) broadcastDeath(p.id);
         }
     }
 }
@@ -219,15 +185,11 @@ function broadcastDeath(playerId) {
     for (let id in players) {
         const p = players[id];
         if (p.ws && p.ws.readyState === WebSocket.OPEN) {
-            p.ws.send(JSON.stringify({
-                type: 'death',
-                playerId: playerId
-            }));
+            p.ws.send(JSON.stringify({ type: 'death', playerId: playerId }));
         }
     }
 }
 
-// Eliminar jugadores muertos
 function removeDeadPlayers() {
     for (let id in players) {
         if (!players[id].alive) {
@@ -237,7 +199,6 @@ function removeDeadPlayers() {
     }
 }
 
-// Broadcast del estado del juego
 function broadcastGameState() {
     const state = {
         type: 'state',
@@ -245,7 +206,6 @@ function broadcastGameState() {
         zone: { x: zoneCenter.x, y: zoneCenter.y, radius: zoneRadius },
         aliveCount: Object.values(players).filter(p => p.alive).length
     };
-    
     for (let id in players) {
         const p = players[id];
         state.players[id] = {
@@ -257,7 +217,6 @@ function broadcastGameState() {
             lastAttackTime: p.lastAttackTime
         };
     }
-    
     const message = JSON.stringify(state);
     for (let id in players) {
         const p = players[id];
@@ -267,52 +226,35 @@ function broadcastGameState() {
     }
 }
 
-// Bucle principal del juego
-function gameLoop() {
+let lastTimestamp = Date.now() / 1000;
+setInterval(() => {
     const now = Date.now() / 1000;
     const deltaTime = Math.min(0.033, now - lastTimestamp);
     lastTimestamp = now;
-    
     updateMovement(deltaTime);
     handleCollisionsAndCombat(now);
     updateZone(now);
     applyZoneDamage(now);
     removeDeadPlayers();
     broadcastGameState();
-}
+}, 1000 / 20);
 
-// WebSocket connection handling
-wss.on('connection', (ws) => {
-    const playerId = nextPlayerId++;
-    const player = new Player(playerId, ws);
-    players[playerId] = player;
-    
-    console.log(`Player ${playerId} connected`);
-    
-    ws.on('message', (message) => {
-        const data = JSON.parse(message);
-        if (data.type === 'move') {
-            const p = players[playerId];
+wss.on("connection", (ws) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    const player = new Player(id, ws);
+    players[id] = player;
+    ws.send(JSON.stringify({ type: 'init', id: id }));
+    ws.on("message", (msg) => {
+        const data = JSON.parse(msg);
+        if (data.type === "move") {
+            const p = players[id];
             if (p && p.alive) {
                 p.dx = data.dx;
                 p.dy = data.dy;
             }
         }
     });
-    
-    ws.on('close', () => {
-        console.log(`Player ${playerId} disconnected`);
-        delete players[playerId];
+    ws.on("close", () => {
+        delete players[id];
     });
-    
-    // Enviar ID inicial
-    ws.send(JSON.stringify({ type: 'init', id: playerId }));
-});
-
-// Iniciar servidor y bucle de juego
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    lastTimestamp = Date.now() / 1000;
-    setInterval(gameLoop, 1000 / 20); // 20 updates per second
 });
