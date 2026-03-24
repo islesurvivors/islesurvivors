@@ -1,145 +1,336 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-body { margin:0; overflow:hidden; background:#111; }
-canvas { display:block; }
+body { margin:0; overflow:hidden; background:#111; font-family: Arial, sans-serif; }
+canvas { display:block; cursor: crosshair; }
+#ui {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    color: white;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 10;
+}
+#health {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    width: 200px;
+    height: 20px;
+    background: rgba(0,0,0,0.7);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #fff;
+    z-index: 10;
+}
+#healthBar {
+    width: 100%;
+    height: 100%;
+    background: #ff3333;
+    transition: width 0.2s;
+}
+#healthText {
+    position: absolute;
+    width: 100%;
+    text-align: center;
+    line-height: 20px;
+    color: white;
+    font-weight: bold;
+    font-size: 12px;
+    text-shadow: 1px 1px 0 black;
+}
+#controlsInfo {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    color: white;
+    background: rgba(0,0,0,0.5);
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    pointer-events: none;
+}
+.damageNumber {
+    position: absolute;
+    font-weight: bold;
+    font-size: 18px;
+    text-shadow: 1px 1px 0 black;
+    animation: floatUp 0.8s forwards;
+    pointer-events: none;
+    z-index: 20;
+}
+@keyframes floatUp {
+    0% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-40px); }
+}
 </style>
 </head>
 <body>
-
 <canvas id="game"></canvas>
+<div id="ui">
+    <div>🏆 Jugadores vivos: <span id="aliveCount">0</span></div>
+</div>
+<div id="health">
+    <div id="healthBar"></div>
+    <div id="healthText">100 HP</div>
+</div>
+<div id="controlsInfo">
+    🖱️ WASD o arrastrar | 💥 Colisión = combate automático
+</div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// RESPONSIVE
+let myId = null;
+let players = {};
+let zone = { x: 800, y: 800, radius: 700 };
+let aliveCount = 0;
+let localPlayerHealth = 100;
+let lastAttackTime = 0;
+let attackCooldown = 0.8;
+
+let input = { dx: 0, dy: 0 };
+
+// Responsive
 function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 }
 resize();
 window.addEventListener("resize", resize);
 
-// WEBSOCKET
+// WebSocket
 const ws = new WebSocket(location.origin.replace("http", "ws"));
 
-let players = {};        // render (suave)
-let serverPlayers = {};  // estado real
-
-let input = { dx: 0, dy: 0 };
-
-// =======================
-// CONTROLES PC
-// =======================
-document.addEventListener("keydown", (e) => {
-  if (e.key === "w") input.dy = -1;
-  if (e.key === "s") input.dy = 1;
-  if (e.key === "a") input.dx = -1;
-  if (e.key === "d") input.dx = 1;
-});
-
-document.addEventListener("keyup", (e) => {
-  if (["w","s"].includes(e.key)) input.dy = 0;
-  if (["a","d"].includes(e.key)) input.dx = 0;
-});
-
-// =======================
-// CONTROLES MOBILE
-// =======================
-let startX = 0, startY = 0;
-
-canvas.addEventListener("touchstart", (e) => {
-  startX = e.touches[0].clientX;
-  startY = e.touches[0].clientY;
-});
-
-canvas.addEventListener("touchmove", (e) => {
-  let dx = e.touches[0].clientX - startX;
-  let dy = e.touches[0].clientY - startY;
-
-  let mag = Math.sqrt(dx*dx + dy*dy) || 1;
-
-  input.dx = dx / mag;
-  input.dy = dy / mag;
-});
-
-canvas.addEventListener("touchend", () => {
-  input.dx = 0;
-  input.dy = 0;
-});
-
-// =======================
-// ENVIAR INPUT
-// =======================
-setInterval(() => {
-  if (ws.readyState === 1) {
-    ws.send(JSON.stringify({
-      type: "move",
-      dx: input.dx,
-      dy: input.dy
-    }));
-  }
-}, 50);
-
-// =======================
-// RECIBIR ESTADO
-// =======================
 ws.onmessage = (msg) => {
-  serverPlayers = JSON.parse(msg.data);
-
-  for (let id in serverPlayers) {
-    if (!players[id]) {
-      players[id] = { ...serverPlayers[id] };
+    const data = JSON.parse(msg.data);
+    
+    if (data.type === 'init') {
+        myId = data.id;
+        console.log("My ID:", myId);
     }
-  }
+    else if (data.type === 'state') {
+        players = data.players;
+        zone = data.zone;
+        aliveCount = data.aliveCount;
+        
+        // Actualizar vida local
+        if (myId && players[myId]) {
+            localPlayerHealth = players[myId].health;
+            const percent = Math.max(0, (localPlayerHealth / 100) * 100);
+            document.getElementById('healthBar').style.width = percent + '%';
+            document.getElementById('healthText').innerText = `${Math.floor(localPlayerHealth)} HP`;
+        }
+        document.getElementById('aliveCount').innerText = aliveCount;
+        
+        // Actualizar último ataque para cooldown visual
+        if (myId && players[myId]) {
+            lastAttackTime = players[myId].lastAttackTime;
+        }
+    }
+    else if (data.type === 'damage') {
+        // Mostrar número de daño flotante
+        if (data.target === myId) {
+            showDamageNumber(data.damage, true);
+            if (data.killed) {
+                setTimeout(() => alert("💀 Has muerto! La isla te ha vencido."), 100);
+            }
+        } else if (data.from === myId) {
+            showDamageNumber(data.damage, false, data.target);
+        }
+    }
+    else if (data.type === 'death') {
+        // Opcional: mostrar notificación
+        console.log("Player died:", data.playerId);
+    }
 };
 
-// =======================
-// INTERPOLACIÓN (SUAVIDAD)
-// =======================
-function update() {
-  for (let id in serverPlayers) {
-    let sp = serverPlayers[id];
-    let p = players[id];
-
-    if (!p) continue;
-
-    p.x += (sp.x - p.x) * 0.2;
-    p.y += (sp.y - p.y) * 0.2;
-  }
+function showDamageNumber(damage, isMe, targetId) {
+    const div = document.createElement('div');
+    div.className = 'damageNumber';
+    div.textContent = `-${damage}`;
+    div.style.color = isMe ? '#ff8888' : '#ffaa44';
+    div.style.left = (isMe ? canvas.width/2 : canvas.width/2 + (Math.random() - 0.5) * 100) + 'px';
+    div.style.top = (isMe ? canvas.height/2 : canvas.height/2 + (Math.random() - 0.5) * 80) + 'px';
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 800);
 }
 
-// =======================
-// RENDER
-// =======================
+// Controles teclado
+document.addEventListener("keydown", (e) => {
+    if (e.key === "w") input.dy = -1;
+    if (e.key === "s") input.dy = 1;
+    if (e.key === "a") input.dx = -1;
+    if (e.key === "d") input.dx = 1;
+});
+document.addEventListener("keyup", (e) => {
+    if (["w","s"].includes(e.key)) input.dy = 0;
+    if (["a","d"].includes(e.key)) input.dx = 0;
+});
+
+// Controles táctiles
+let startX = 0, startY = 0;
+canvas.addEventListener("touchstart", (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+});
+canvas.addEventListener("touchmove", (e) => {
+    let dx = e.touches[0].clientX - startX;
+    let dy = e.touches[0].clientY - startY;
+    let mag = Math.hypot(dx, dy) || 1;
+    input.dx = dx / mag;
+    input.dy = dy / mag;
+});
+canvas.addEventListener("touchend", () => {
+    input.dx = 0;
+    input.dy = 0;
+});
+
+// Envío de movimiento
+setInterval(() => {
+    if (ws.readyState === 1 && myId) {
+        ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
+    }
+}, 50);
+
+// Interpolación suave
+let renderPlayers = {};
+function interpolate() {
+    for (let id in players) {
+        if (!renderPlayers[id]) {
+            renderPlayers[id] = { ...players[id] };
+        }
+        const sp = players[id];
+        const rp = renderPlayers[id];
+        if (sp && rp) {
+            rp.x += (sp.x - rp.x) * 0.25;
+            rp.y += (sp.y - rp.y) * 0.25;
+            rp.health = sp.health;
+        }
+    }
+}
+
+// Dibujar
 function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  for (let id in players) {
-    let p = players[id];
-
-    // jugador
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Fondo del mar
+    ctx.fillStyle = "#0a2f6c";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Dibujar zona segura (círculo)
+    const centerScreenX = canvas.width / 2;
+    const centerScreenY = canvas.height / 2;
+    const scale = 1; // Simplemente dibujamos en coordenadas mundo -> pantalla
+    
+    // Transformación para dibujar en coordenadas del mundo
+    // (cámara centrada en el jugador)
+    let camX = 0, camY = 0;
+    if (myId && renderPlayers[myId]) {
+        camX = renderPlayers[myId].x - canvas.width/2;
+        camY = renderPlayers[myId].y - canvas.height/2;
+    }
+    
+    ctx.save();
+    ctx.translate(-camX, -camY);
+    
+    // Zona segura
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
-    ctx.fillStyle = "lime";
+    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(0, 150, 200, 0.2)";
     ctx.fill();
-  }
+    ctx.strokeStyle = "rgba(0, 200, 255, 0.8)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    
+    // Borde exterior peligroso (solo visual)
+    ctx.beginPath();
+    ctx.arc(zone.x, zone.y, zone.radius + 5, 0, Math.PI*2);
+    ctx.strokeStyle = "rgba(255, 0, 0, 0.3)";
+    ctx.stroke();
+    
+    // Dibujar jugadores
+    for (let id in renderPlayers) {
+        const p = renderPlayers[id];
+        if (!p.alive) continue;
+        
+        const isMe = (id == myId);
+        const radius = 14;
+        
+        // Sombra
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = "rgba(0,0,0,0.5)";
+        
+        // Cuerpo
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI*2);
+        ctx.fillStyle = isMe ? "#88ff88" : "#ff6666";
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Barra de vida
+        const healthPercent = p.health / 100;
+        const barWidth = 30;
+        const barHeight = 6;
+        const barX = p.x - barWidth/2;
+        const barY = p.y - radius - 10;
+        ctx.fillStyle = "#333";
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        ctx.fillStyle = "#ff3333";
+        ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+        
+        // Indicador de cooldown (solo para el jugador propio)
+        if (isMe && lastAttackTime) {
+            const now = Date.now() / 1000;
+            const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
+            if (cooldownRemaining > 0) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, radius + 3, 0, Math.PI * 2 * (1 - cooldownRemaining/attackCooldown));
+                ctx.strokeStyle = "#ffaa44";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+        }
+        
+        ctx.shadowBlur = 0;
+        
+        // Nombre (ID)
+        ctx.font = "12px Arial";
+        ctx.fillStyle = "white";
+        ctx.shadowBlur = 0;
+        ctx.fillText(id === myId ? "Tú" : `P${id}`, p.x-12, p.y-radius-12);
+    }
+    
+    ctx.restore();
+    
+    // UI de zona segura (texto)
+    ctx.font = "bold 14px monospace";
+    ctx.fillStyle = "white";
+    ctx.shadowBlur = 2;
+    ctx.fillText(`🌊 Zona segura: ${Math.floor(zone.radius)}m`, 20, 70);
+    if (zone.radius < 300) {
+        ctx.fillStyle = "#ff8888";
+        ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
+    }
 }
 
-// =======================
-// LOOP
-// =======================
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
+// Loop
+function gameLoop() {
+    interpolate();
+    draw();
+    requestAnimationFrame(gameLoop);
 }
 
-loop();
+gameLoop();
 </script>
-
 </body>
 </html>
