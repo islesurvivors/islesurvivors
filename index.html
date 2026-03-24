@@ -26,8 +26,8 @@ window.addEventListener("resize", resize);
 // WEBSOCKET
 const ws = new WebSocket(location.origin.replace("http", "ws"));
 
-let players = {};
-let serverPlayers = {};
+let players = {};        // render (suave)
+let serverPlayers = {};  // estado real
 
 let input = { dx: 0, dy: 0 };
 
@@ -47,7 +47,7 @@ document.addEventListener("keyup", (e) => {
 });
 
 // =======================
-// MOBILE
+// CONTROLES MOBILE
 // =======================
 let startX = 0, startY = 0;
 
@@ -72,7 +72,7 @@ canvas.addEventListener("touchend", () => {
 });
 
 // =======================
-// ENVÍO MÁS RÁPIDO
+// ENVIAR INPUT
 // =======================
 setInterval(() => {
   if (ws.readyState === 1) {
@@ -82,7 +82,7 @@ setInterval(() => {
       dy: input.dy
     }));
   }
-}, 30); // antes 50 → ahora más fluido
+}, 50);
 
 // =======================
 // RECIBIR ESTADO
@@ -98,7 +98,7 @@ ws.onmessage = (msg) => {
 };
 
 // =======================
-// INTERPOLACIÓN MEJORADA
+// INTERPOLACIÓN (SUAVIDAD)
 // =======================
 function update() {
   for (let id in serverPlayers) {
@@ -107,9 +107,8 @@ function update() {
 
     if (!p) continue;
 
-    // más agresivo = menos lag visual
-    p.x += (sp.x - p.x) * 0.4;
-    p.y += (sp.y - p.y) * 0.4;
+    p.x += (sp.x - p.x) * 0.2;
+    p.y += (sp.y - p.y) * 0.2;
   }
 }
 
@@ -122,12 +121,10 @@ function draw() {
   for (let id in players) {
     let p = players[id];
 
+    // jugador
     ctx.beginPath();
     ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
-
-    // 👇 CAMBIO DE COLOR (para verificar deploy)
-    ctx.fillStyle = "cyan";
-
+    ctx.fillStyle = "lime";
     ctx.fill();
   }
 }
