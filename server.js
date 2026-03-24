@@ -36,7 +36,7 @@ class Player {
         this.lastAttackTime = 0;
         this.dx = 0;
         this.dy = 0;
-        this.speed = 200;
+        this.speed = 200; // Velocidad original
         this.alive = true;
     }
 
@@ -101,6 +101,7 @@ function updateMovement(deltaTime) {
         if (!p.alive) continue;
         p.x += p.dx * p.speed * deltaTime;
         p.y += p.dy * p.speed * deltaTime;
+        // Límites con radio de jugador
         p.x = Math.min(Math.max(p.x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
         p.y = Math.min(Math.max(p.y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
     }
@@ -123,10 +124,16 @@ function handleCollisionsAndCombat(now) {
                 const overlap = minDist - dist;
                 const moveX = Math.cos(angle) * overlap / 2;
                 const moveY = Math.sin(angle) * overlap / 2;
-                p1.x += moveX;
-                p1.y += moveY;
-                p2.x -= moveX;
-                p2.y -= moveY;
+                let newX1 = p1.x + moveX;
+                let newY1 = p1.y + moveY;
+                let newX2 = p2.x - moveX;
+                let newY2 = p2.y - moveY;
+                // Aplicar límites después de separar
+                p1.x = Math.min(Math.max(newX1, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+                p1.y = Math.min(Math.max(newY1, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+                p2.x = Math.min(Math.max(newX2, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+                p2.y = Math.min(Math.max(newY2, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+                
                 const combatResult = resolveCombat(p1, p2, now);
                 if (combatResult && (combatResult.firstHit || combatResult.secondHit)) {
                     if (combatResult.firstHit) sendDamageEvent(combatResult.firstHit);
@@ -204,7 +211,8 @@ function broadcastGameState() {
         type: 'state',
         players: {},
         zone: { x: zoneCenter.x, y: zoneCenter.y, radius: zoneRadius },
-        aliveCount: Object.values(players).filter(p => p.alive).length
+        aliveCount: Object.values(players).filter(p => p.alive).length,
+        timestamp: Date.now() // para calcular ping
     };
     for (let id in players) {
         const p = players[id];
