@@ -17,6 +17,18 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
     z-index: 10;
 }
+#ping {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    color: white;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 10;
+}
 #health {
     position: fixed;
     bottom: 20px;
@@ -76,6 +88,9 @@ canvas { display:block; cursor: crosshair; }
 <div id="ui">
     <div>🏆 Jugadores vivos: <span id="aliveCount">0</span></div>
 </div>
+<div id="ping">
+    📡 Ping: <span id="pingValue">0</span> ms
+</div>
 <div id="health">
     <div id="healthBar"></div>
     <div id="healthText">100 HP</div>
@@ -97,6 +112,8 @@ let lastAttackTime = 0;
 let attackCooldown = 0.8;
 
 let input = { dx: 0, dy: 0 };
+let lastPingSend = 0;
+let ping = 0;
 
 function getPlayerColor(id, isMe) {
     if (isMe) return "#88ff88";
@@ -139,6 +156,12 @@ ws.onmessage = (msg) => {
         
         if (myId && players[myId]) {
             lastAttackTime = players[myId].lastAttackTime;
+        }
+        
+        // Calcular ping
+        if (data.timestamp) {
+            ping = Date.now() - data.timestamp;
+            document.getElementById('pingValue').innerText = ping;
         }
     }
     else if (data.type === 'damage') {
@@ -192,11 +215,12 @@ canvas.addEventListener("touchend", () => {
     input.dy = 0;
 });
 
+// Envío de input más frecuente (30ms)
 setInterval(() => {
     if (ws.readyState === 1 && myId) {
         ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
     }
-}, 50);
+}, 30);
 
 let renderPlayers = {};
 function interpolate() {
@@ -207,20 +231,19 @@ function interpolate() {
         const sp = players[id];
         const rp = renderPlayers[id];
         if (sp && rp) {
-            rp.x += (sp.x - rp.x) * 0.25;
-            rp.y += (sp.y - rp.y) * 0.25;
+            // Factor de interpolación más alto para seguir más rápido
+            rp.x += (sp.x - rp.x) * 0.35;
+            rp.y += (sp.y - rp.y) * 0.35;
             rp.health = sp.health;
         }
     }
 }
 
 function drawGround(camX, camY) {
-    // Fondo base de arena
     ctx.fillStyle = "#e0b05a";
     ctx.fillRect(camX, camY, canvas.width, canvas.height);
     
-    // Puntos de textura más espaciados y estables
-    const gridSpacing = 80; // Mayor espaciado = menos frenético
+    const gridSpacing = 80;
     const startX = Math.floor(camX / gridSpacing) * gridSpacing;
     const startY = Math.floor(camY / gridSpacing) * gridSpacing;
     
@@ -248,7 +271,6 @@ function draw() {
     
     drawGround(camX, camY);
     
-    // Zona segura
     ctx.beginPath();
     ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
