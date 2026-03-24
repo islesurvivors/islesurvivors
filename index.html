@@ -98,7 +98,6 @@ let attackCooldown = 0.8;
 
 let input = { dx: 0, dy: 0 };
 
-// Responsive
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -106,7 +105,6 @@ function resize() {
 resize();
 window.addEventListener("resize", resize);
 
-// WebSocket
 const ws = new WebSocket(location.origin.replace("http", "ws"));
 
 ws.onmessage = (msg) => {
@@ -114,14 +112,12 @@ ws.onmessage = (msg) => {
     
     if (data.type === 'init') {
         myId = data.id;
-        console.log("My ID:", myId);
     }
     else if (data.type === 'state') {
         players = data.players;
         zone = data.zone;
         aliveCount = data.aliveCount;
         
-        // Actualizar vida local
         if (myId && players[myId]) {
             localPlayerHealth = players[myId].health;
             const percent = Math.max(0, (localPlayerHealth / 100) * 100);
@@ -130,13 +126,11 @@ ws.onmessage = (msg) => {
         }
         document.getElementById('aliveCount').innerText = aliveCount;
         
-        // Actualizar último ataque para cooldown visual
         if (myId && players[myId]) {
             lastAttackTime = players[myId].lastAttackTime;
         }
     }
     else if (data.type === 'damage') {
-        // Mostrar número de daño flotante
         if (data.target === myId) {
             showDamageNumber(data.damage, true);
             if (data.killed) {
@@ -147,8 +141,6 @@ ws.onmessage = (msg) => {
         }
     }
     else if (data.type === 'death') {
-        // Opcional: mostrar notificación
-        console.log("Player died:", data.playerId);
     }
 };
 
@@ -163,7 +155,6 @@ function showDamageNumber(damage, isMe, targetId) {
     setTimeout(() => div.remove(), 800);
 }
 
-// Controles teclado
 document.addEventListener("keydown", (e) => {
     if (e.key === "w") input.dy = -1;
     if (e.key === "s") input.dy = 1;
@@ -175,7 +166,6 @@ document.addEventListener("keyup", (e) => {
     if (["a","d"].includes(e.key)) input.dx = 0;
 });
 
-// Controles táctiles
 let startX = 0, startY = 0;
 canvas.addEventListener("touchstart", (e) => {
     startX = e.touches[0].clientX;
@@ -193,14 +183,12 @@ canvas.addEventListener("touchend", () => {
     input.dy = 0;
 });
 
-// Envío de movimiento
 setInterval(() => {
     if (ws.readyState === 1 && myId) {
         ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
     }
 }, 50);
 
-// Interpolación suave
 let renderPlayers = {};
 function interpolate() {
     for (let id in players) {
@@ -217,21 +205,12 @@ function interpolate() {
     }
 }
 
-// Dibujar
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Fondo del mar
     ctx.fillStyle = "#0a2f6c";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Dibujar zona segura (círculo)
-    const centerScreenX = canvas.width / 2;
-    const centerScreenY = canvas.height / 2;
-    const scale = 1; // Simplemente dibujamos en coordenadas mundo -> pantalla
-    
-    // Transformación para dibujar en coordenadas del mundo
-    // (cámara centrada en el jugador)
     let camX = 0, camY = 0;
     if (myId && renderPlayers[myId]) {
         camX = renderPlayers[myId].x - canvas.width/2;
@@ -241,7 +220,6 @@ function draw() {
     ctx.save();
     ctx.translate(-camX, -camY);
     
-    // Zona segura
     ctx.beginPath();
     ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI*2);
     ctx.fillStyle = "rgba(0, 150, 200, 0.2)";
@@ -250,13 +228,11 @@ function draw() {
     ctx.lineWidth = 3;
     ctx.stroke();
     
-    // Borde exterior peligroso (solo visual)
     ctx.beginPath();
     ctx.arc(zone.x, zone.y, zone.radius + 5, 0, Math.PI*2);
     ctx.strokeStyle = "rgba(255, 0, 0, 0.3)";
     ctx.stroke();
     
-    // Dibujar jugadores
     for (let id in renderPlayers) {
         const p = renderPlayers[id];
         if (!p.alive) continue;
@@ -264,11 +240,9 @@ function draw() {
         const isMe = (id == myId);
         const radius = 14;
         
-        // Sombra
         ctx.shadowBlur = 8;
         ctx.shadowColor = "rgba(0,0,0,0.5)";
         
-        // Cuerpo
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI*2);
         ctx.fillStyle = isMe ? "#88ff88" : "#ff6666";
@@ -277,7 +251,6 @@ function draw() {
         ctx.lineWidth = 2;
         ctx.stroke();
         
-        // Barra de vida
         const healthPercent = p.health / 100;
         const barWidth = 30;
         const barHeight = 6;
@@ -288,7 +261,6 @@ function draw() {
         ctx.fillStyle = "#ff3333";
         ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
         
-        // Indicador de cooldown (solo para el jugador propio)
         if (isMe && lastAttackTime) {
             const now = Date.now() / 1000;
             const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
@@ -303,16 +275,13 @@ function draw() {
         
         ctx.shadowBlur = 0;
         
-        // Nombre (ID)
         ctx.font = "12px Arial";
         ctx.fillStyle = "white";
-        ctx.shadowBlur = 0;
         ctx.fillText(id === myId ? "Tú" : `P${id}`, p.x-12, p.y-radius-12);
     }
     
     ctx.restore();
     
-    // UI de zona segura (texto)
     ctx.font = "bold 14px monospace";
     ctx.fillStyle = "white";
     ctx.shadowBlur = 2;
@@ -323,7 +292,6 @@ function draw() {
     }
 }
 
-// Loop
 function gameLoop() {
     interpolate();
     draw();
