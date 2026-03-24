@@ -15,7 +15,6 @@ canvas { display:block; }
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// RESPONSIVE
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -23,16 +22,16 @@ function resize() {
 resize();
 window.addEventListener("resize", resize);
 
-// WEBSOCKET
 const ws = new WebSocket(location.origin.replace("http", "ws"));
 
 let players = {};
 let serverPlayers = {};
+let myId = null;
 
 let input = { dx: 0, dy: 0 };
 
 // =======================
-// CONTROLES PC
+// CONTROLES
 // =======================
 document.addEventListener("keydown", (e) => {
   if (e.key === "w") input.dy = -1;
@@ -47,32 +46,7 @@ document.addEventListener("keyup", (e) => {
 });
 
 // =======================
-// MOBILE
-// =======================
-let startX = 0, startY = 0;
-
-canvas.addEventListener("touchstart", (e) => {
-  startX = e.touches[0].clientX;
-  startY = e.touches[0].clientY;
-});
-
-canvas.addEventListener("touchmove", (e) => {
-  let dx = e.touches[0].clientX - startX;
-  let dy = e.touches[0].clientY - startY;
-
-  let mag = Math.sqrt(dx*dx + dy*dy) || 1;
-
-  input.dx = dx / mag;
-  input.dy = dy / mag;
-});
-
-canvas.addEventListener("touchend", () => {
-  input.dx = 0;
-  input.dy = 0;
-});
-
-// =======================
-// ENVÍO MÁS RÁPIDO
+// ENVIAR INPUT
 // =======================
 setInterval(() => {
   if (ws.readyState === 1) {
@@ -82,13 +56,23 @@ setInterval(() => {
       dy: input.dy
     }));
   }
-}, 30); // antes 50 → ahora más fluido
+}, 30);
 
 // =======================
 // RECIBIR ESTADO
 // =======================
 ws.onmessage = (msg) => {
   serverPlayers = JSON.parse(msg.data);
+
+  // detectar tu jugador
+  if (!myId) {
+    for (let id in serverPlayers) {
+      if (!players[id]) {
+        myId = id;
+        break;
+      }
+    }
+  }
 
   for (let id in serverPlayers) {
     if (!players[id]) {
@@ -98,7 +82,7 @@ ws.onmessage = (msg) => {
 };
 
 // =======================
-// INTERPOLACIÓN MEJORADA
+// UPDATE
 // =======================
 function update() {
   for (let id in serverPlayers) {
@@ -107,9 +91,15 @@ function update() {
 
     if (!p) continue;
 
-    // más agresivo = menos lag visual
-    p.x += (sp.x - p.x) * 0.4;
-    p.y += (sp.y - p.y) * 0.4;
+    if (id === myId) {
+      // 🔥 MOVIMIENTO LOCAL (SIN LAG)
+      p.x += input.dx * 3;
+      p.y += input.dy * 3;
+    } else {
+      // otros jugadores suavizados
+      p.x += (sp.x - p.x) * 0.3;
+      p.y += (sp.y - p.y) * 0.3;
+    }
   }
 }
 
@@ -125,8 +115,8 @@ function draw() {
     ctx.beginPath();
     ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
 
-    // 👇 CAMBIO DE COLOR (para verificar deploy)
-    ctx.fillStyle = "cyan";
+    // vos = cyan, otros = rojo
+    ctx.fillStyle = (id === myId) ? "cyan" : "red";
 
     ctx.fill();
   }
