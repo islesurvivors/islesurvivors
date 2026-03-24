@@ -98,14 +98,12 @@ let attackCooldown = 0.8;
 
 let input = { dx: 0, dy: 0 };
 
-// Función para generar un color único a partir de un ID
 function getPlayerColor(id, isMe) {
-    if (isMe) return "#88ff88"; // Verde brillante para el jugador local
-    // Generar un hue basado en el hash del ID
+    if (isMe) return "#88ff88";
     let hash = 0;
     for (let i = 0; i < id.length; i++) {
         hash = ((hash << 5) - hash) + id.charCodeAt(i);
-        hash |= 0; // Convertir a 32-bit integer
+        hash |= 0;
     }
     const hue = Math.abs(hash % 360);
     return `hsl(${hue}, 70%, 55%)`;
@@ -152,8 +150,6 @@ ws.onmessage = (msg) => {
         } else if (data.from === myId) {
             showDamageNumber(data.damage, false, data.target);
         }
-    }
-    else if (data.type === 'death') {
     }
 };
 
@@ -240,7 +236,8 @@ function drawGround(camX, camY) {
     
     for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
         for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
-            const size = (Math.sin(x * 0.05) + Math.sin(y * 0.05)) * 2 + 3;
+            let size = (Math.sin(x * 0.05) + Math.sin(y * 0.05)) * 2 + 3;
+            size = Math.max(1.5, size); // Evitar radios negativos o demasiado pequeños
             ctx.beginPath();
             ctx.arc(x, y, size, 0, Math.PI * 2);
             ctx.fillStyle = `hsl(45, 70%, ${35 + (Math.sin(x * 0.03) * 5)})`;
