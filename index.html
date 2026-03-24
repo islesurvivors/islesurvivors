@@ -215,32 +215,20 @@ function interpolate() {
 }
 
 function drawGround(camX, camY) {
+    // Fondo base de arena
     ctx.fillStyle = "#e0b05a";
     ctx.fillRect(camX, camY, canvas.width, canvas.height);
     
-    ctx.globalAlpha = 0.3;
-    for (let i = 0; i < 300; i++) {
-        ctx.fillStyle = `hsl(45, 70%, ${30 + Math.random() * 40}%)`;
-        ctx.fillRect(
-            camX + Math.random() * canvas.width,
-            camY + Math.random() * canvas.height,
-            Math.random() * 30 + 10,
-            Math.random() * 30 + 10
-        );
-    }
-    ctx.globalAlpha = 1;
-    
-    const gridSpacing = 40;
+    // Puntos de textura más espaciados y estables
+    const gridSpacing = 80; // Mayor espaciado = menos frenético
     const startX = Math.floor(camX / gridSpacing) * gridSpacing;
     const startY = Math.floor(camY / gridSpacing) * gridSpacing;
     
+    ctx.fillStyle = "#c99a3a";
     for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
         for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
-            let size = (Math.sin(x * 0.05) + Math.sin(y * 0.05)) * 2 + 3;
-            size = Math.max(1.5, size); // Evitar radios negativos o demasiado pequeños
             ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fillStyle = `hsl(45, 70%, ${35 + (Math.sin(x * 0.03) * 5)})`;
+            ctx.arc(x, y, 2.5, 0, Math.PI * 2);
             ctx.fill();
         }
     }
@@ -260,6 +248,7 @@ function draw() {
     
     drawGround(camX, camY);
     
+    // Zona segura
     ctx.beginPath();
     ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
