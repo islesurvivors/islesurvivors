@@ -115,8 +115,11 @@ let input = { dx: 0, dy: 0 };
 let lastPingSend = 0;
 let ping = 0;
 
-function getPlayerColor(id, isMe) {
-    if (isMe) return "#88ff88";
+// Función que prioriza el color enviado por el servidor
+function getPlayerColor(id, isMe, serverColor) {
+    if (isMe) return "#88ff88";           // Siempre verde para el jugador local
+    if (serverColor) return serverColor;  // Usar el color que envía el servidor
+    // Fallback en caso de que el servidor no envíe color (versiones antiguas)
     let hash = 0;
     for (let i = 0; i < id.length; i++) {
         hash = ((hash << 5) - hash) + id.charCodeAt(i);
@@ -158,7 +161,6 @@ ws.onmessage = (msg) => {
             lastAttackTime = players[myId].lastAttackTime;
         }
         
-        // Calcular ping
         if (data.timestamp) {
             ping = Date.now() - data.timestamp;
             document.getElementById('pingValue').innerText = ping;
@@ -215,7 +217,6 @@ canvas.addEventListener("touchend", () => {
     input.dy = 0;
 });
 
-// Envío de input más frecuente (30ms)
 setInterval(() => {
     if (ws.readyState === 1 && myId) {
         ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
@@ -231,10 +232,10 @@ function interpolate() {
         const sp = players[id];
         const rp = renderPlayers[id];
         if (sp && rp) {
-            // Factor de interpolación más alto para seguir más rápido
             rp.x += (sp.x - rp.x) * 0.35;
             rp.y += (sp.y - rp.y) * 0.35;
             rp.health = sp.health;
+            rp.color = sp.color;   // Aseguramos que el color esté actualizado
         }
     }
 }
@@ -271,6 +272,7 @@ function draw() {
     
     drawGround(camX, camY);
     
+    // Zona segura
     ctx.beginPath();
     ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
@@ -296,7 +298,8 @@ function draw() {
         
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = getPlayerColor(id, isMe);
+        // Pasamos el color del servidor (p.color) a la función
+        ctx.fillStyle = getPlayerColor(id, isMe, p.color);
         ctx.fill();
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
