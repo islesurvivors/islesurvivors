@@ -15,15 +15,25 @@ canvas { display:block; }
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+// RESPONSIVE
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
 
+// WEBSOCKET
 const ws = new WebSocket(location.origin.replace("http", "ws"));
 
-let players = {};
+let players = {};        // render (suave)
+let serverPlayers = {};  // estado real
+
 let input = { dx: 0, dy: 0 };
 
-// WASD
+// =======================
+// CONTROLES PC
+// =======================
 document.addEventListener("keydown", (e) => {
   if (e.key === "w") input.dy = -1;
   if (e.key === "s") input.dy = 1;
@@ -36,7 +46,9 @@ document.addEventListener("keyup", (e) => {
   if (["a","d"].includes(e.key)) input.dx = 0;
 });
 
-// TOUCH
+// =======================
+// CONTROLES MOBILE
+// =======================
 let startX = 0, startY = 0;
 
 canvas.addEventListener("touchstart", (e) => {
@@ -59,33 +71,70 @@ canvas.addEventListener("touchend", () => {
   input.dy = 0;
 });
 
-// SEND INPUT
+// =======================
+// ENVIAR INPUT
+// =======================
 setInterval(() => {
-  ws.send(JSON.stringify({
-    type: "move",
-    dx: input.dx,
-    dy: input.dy
-  }));
+  if (ws.readyState === 1) {
+    ws.send(JSON.stringify({
+      type: "move",
+      dx: input.dx,
+      dy: input.dy
+    }));
+  }
 }, 50);
 
-// RECEIVE STATE
+// =======================
+// RECIBIR ESTADO
+// =======================
 ws.onmessage = (msg) => {
-  players = JSON.parse(msg.data);
+  serverPlayers = JSON.parse(msg.data);
+
+  for (let id in serverPlayers) {
+    if (!players[id]) {
+      players[id] = { ...serverPlayers[id] };
+    }
+  }
 };
 
+// =======================
+// INTERPOLACIÓN (SUAVIDAD)
+// =======================
+function update() {
+  for (let id in serverPlayers) {
+    let sp = serverPlayers[id];
+    let p = players[id];
+
+    if (!p) continue;
+
+    p.x += (sp.x - p.x) * 0.2;
+    p.y += (sp.y - p.y) * 0.2;
+  }
+}
+
+// =======================
 // RENDER
-function loop() {
+// =======================
+function draw() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   for (let id in players) {
     let p = players[id];
 
+    // jugador
     ctx.beginPath();
     ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
     ctx.fillStyle = "lime";
     ctx.fill();
   }
+}
 
+// =======================
+// LOOP
+// =======================
+function loop() {
+  update();
+  draw();
   requestAnimationFrame(loop);
 }
 
