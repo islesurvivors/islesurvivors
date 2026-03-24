@@ -112,14 +112,15 @@ let lastAttackTime = 0;
 let attackCooldown = 0.8;
 
 let input = { dx: 0, dy: 0 };
-let lastPingSend = 0;
 let ping = 0;
 
-// Función que prioriza el color enviado por el servidor
+// Variables para predicción local
+let localPlayer = { x: 0, y: 0, speed: 200 };  // velocidad igual al servidor
+let lastServerTime = 0;
+
 function getPlayerColor(id, isMe, serverColor) {
-    if (isMe) return "#88ff88";           // Siempre verde para el jugador local
-    if (serverColor) return serverColor;  // Usar el color que envía el servidor
-    // Fallback en caso de que el servidor no envíe color (versiones antiguas)
+    if (isMe) return "#88ff88";
+    if (serverColor) return serverColor;
     let hash = 0;
     for (let i = 0; i < id.length; i++) {
         hash = ((hash << 5) - hash) + id.charCodeAt(i);
@@ -145,6 +146,7 @@ ws.onmessage = (msg) => {
         myId = data.id;
     }
     else if (data.type === 'state') {
+        // Actualizar otros jugadores y zona
         players = data.players;
         zone = data.zone;
         aliveCount = data.aliveCount;
@@ -154,12 +156,15 @@ ws.onmessage = (msg) => {
             const percent = Math.max(0, (localPlayerHealth / 100) * 100);
             document.getElementById('healthBar').style.width = percent + '%';
             document.getElementById('healthText').innerText = `${Math.floor(localPlayerHealth)} HP`;
+            
+            lastAttackTime = players[myId].lastAttackTime;
+            
+            // RECONCILIACIÓN: corregir la posición local con la real del servidor
+            // Usamos interpolación suave para evitar saltos bruscos
+            localPlayer.x += (players[myId].x - localPlayer.x) * 0.5;
+            localPlayer.y += (players[myId].y - localPlayer.y) * 0.5;
         }
         document.getElementById('aliveCount').innerText = aliveCount;
-        
-        if (myId && players[myId]) {
-            lastAttackTime = players[myId].lastAttackTime;
-        }
         
         if (data.timestamp) {
             ping = Date.now() - data.timestamp;
@@ -189,6 +194,7 @@ function showDamageNumber(damage, isMe, targetId) {
     setTimeout(() => div.remove(), 800);
 }
 
+// Controles
 document.addEventListener("keydown", (e) => {
     if (e.key === "w") input.dy = -1;
     if (e.key === "s") input.dy = 1;
@@ -217,15 +223,18 @@ canvas.addEventListener("touchend", () => {
     input.dy = 0;
 });
 
+// Envío de input al servidor cada 30ms
 setInterval(() => {
     if (ws.readyState === 1 && myId) {
         ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
     }
 }, 30);
 
+// Interpolación para los otros jugadores (renderPlayers)
 let renderPlayers = {};
-function interpolate() {
+function interpolateOthers() {
     for (let id in players) {
+        if (id === myId) continue; // nosotros ya manejamos la posición local
         if (!renderPlayers[id]) {
             renderPlayers[id] = { ...players[id] };
         }
@@ -235,9 +244,25 @@ function interpolate() {
             rp.x += (sp.x - rp.x) * 0.35;
             rp.y += (sp.y - rp.y) * 0.35;
             rp.health = sp.health;
-            rp.color = sp.color;   // Aseguramos que el color esté actualizado
+            rp.color = sp.color;
         }
     }
+}
+
+// Predicción local: mover según input
+let lastFrameTime = 0;
+function updateLocalMovement(now) {
+    if (!myId) return;
+    const delta = Math.min(0.033, (now - lastFrameTime) / 1000);
+    if (delta > 0) {
+        localPlayer.x += input.dx * localPlayer.speed * delta;
+        localPlayer.y += input.dy * localPlayer.speed * delta;
+        // Límites del mundo (1600x1600)
+        const limit = 15; // radio del jugador
+        localPlayer.x = Math.min(Math.max(localPlayer.x, limit), 1600 - limit);
+        localPlayer.y = Math.min(Math.max(localPlayer.y, limit), 1600 - limit);
+    }
+    lastFrameTime = now;
 }
 
 function drawGround(camX, camY) {
@@ -261,11 +286,9 @@ function drawGround(camX, camY) {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    let camX = 0, camY = 0;
-    if (myId && renderPlayers[myId]) {
-        camX = renderPlayers[myId].x - canvas.width / 2;
-        camY = renderPlayers[myId].y - canvas.height / 2;
-    }
+    // Cámara centrada en la posición local predicha
+    let camX = localPlayer.x - canvas.width / 2;
+    let camY = localPlayer.y - canvas.height / 2;
     
     ctx.save();
     ctx.translate(-camX, -camY);
@@ -286,20 +309,16 @@ function draw() {
     ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
     ctx.stroke();
     
+    // Dibujar otros jugadores (con interpolación)
     for (let id in renderPlayers) {
         const p = renderPlayers[id];
         if (!p.alive) continue;
-        
-        const isMe = (id == myId);
         const radius = 14;
-        
         ctx.shadowBlur = 8;
         ctx.shadowColor = "rgba(0,0,0,0.5)";
-        
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-        // Pasamos el color del servidor (p.color) a la función
-        ctx.fillStyle = getPlayerColor(id, isMe, p.color);
+        ctx.fillStyle = getPlayerColor(id, false, p.color);
         ctx.fill();
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
@@ -315,12 +334,43 @@ function draw() {
         ctx.fillStyle = "#ff3333";
         ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
         
-        if (isMe && lastAttackTime) {
+        ctx.shadowBlur = 0;
+        ctx.font = "12px Arial";
+        ctx.fillStyle = "white";
+        ctx.fillText(`P${id.substring(0,4)}`, p.x - 12, p.y - radius - 12);
+    }
+    
+    // Dibujar jugador local (con predicción)
+    if (myId) {
+        const radius = 14;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = "rgba(0,0,0,0.5)";
+        ctx.beginPath();
+        ctx.arc(localPlayer.x, localPlayer.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#88ff88";
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Barra de vida local
+        const healthPercent = localPlayerHealth / 100;
+        const barWidth = 30;
+        const barHeight = 6;
+        const barX = localPlayer.x - barWidth / 2;
+        const barY = localPlayer.y - radius - 10;
+        ctx.fillStyle = "#333";
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        ctx.fillStyle = "#ff3333";
+        ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+        
+        // Cooldown
+        if (lastAttackTime) {
             const now = Date.now() / 1000;
             const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
             if (cooldownRemaining > 0) {
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, radius + 3, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
+                ctx.arc(localPlayer.x, localPlayer.y, radius + 3, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
                 ctx.strokeStyle = "#ffaa44";
                 ctx.lineWidth = 3;
                 ctx.stroke();
@@ -328,10 +378,9 @@ function draw() {
         }
         
         ctx.shadowBlur = 0;
-        
         ctx.font = "12px Arial";
         ctx.fillStyle = "white";
-        ctx.fillText(id === myId ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - radius - 12);
+        ctx.fillText("Tú", localPlayer.x - 12, localPlayer.y - radius - 12);
     }
     
     ctx.restore();
@@ -346,13 +395,15 @@ function draw() {
     }
 }
 
-function gameLoop() {
-    interpolate();
-    draw();
+// Loop de animación
+let lastTimestamp = 0;
+function gameLoop(now) {
     requestAnimationFrame(gameLoop);
+    updateLocalMovement(now);
+    interpolateOthers();
+    draw();
 }
-
-gameLoop();
+requestAnimationFrame(gameLoop);
 </script>
 </body>
 </html>
