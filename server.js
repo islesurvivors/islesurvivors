@@ -39,6 +39,7 @@ class Player {
         this.speed = 200;
         this.alive = true;
         this.color = this.generateColor(id);
+        this.respawnTime = null; // tiempo en ms para respawn
     }
 
     generateColor(id) {
@@ -52,13 +53,18 @@ class Player {
     }
 
     takeDamage(amount) {
+        if (!this.alive) return false;
         this.health = Math.max(0, this.health - amount);
-        if (this.health <= 0) this.alive = false;
-        return this.health <= 0;
+        if (this.health <= 0) {
+            this.alive = false;
+            this.respawnTime = Date.now() + 5000; // 5 segundos
+            return true; // killed
+        }
+        return false;
     }
 
     canAttack(now) {
-        return now - this.lastAttackTime >= ATTACK_COOLDOWN;
+        return this.alive && (now - this.lastAttackTime >= ATTACK_COOLDOWN);
     }
 
     attack(target, now) {
@@ -206,10 +212,42 @@ function broadcastDeath(playerId) {
     }
 }
 
+// Nueva función: procesa los respawns de jugadores muertos
+function processRespawns() {
+    const now = Date.now();
+    for (let id in players) {
+        const p = players[id];
+        if (!p.alive && p.respawnTime && p.respawnTime <= now) {
+            // Revivir jugador
+            p.alive = true;
+            p.health = 100;
+            p.lastAttackTime = 0;
+            p.dx = 0;
+            p.dy = 0;
+            
+            // Generar posición aleatoria dentro de la zona segura actual
+            let safeRadius = Math.min(zoneRadius, WORLD_SIZE / 2);
+            let angle = Math.random() * 2 * Math.PI;
+            let radius = Math.random() * safeRadius;
+            let x = zoneCenter.x + Math.cos(angle) * radius;
+            let y = zoneCenter.y + Math.sin(angle) * radius;
+            x = Math.min(Math.max(x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+            y = Math.min(Math.max(y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+            p.x = x;
+            p.y = y;
+            p.respawnTime = null;
+            
+            // Opcional: enviar evento de respawn al cliente
+            // El broadcastGameState ya lo reflejará
+        }
+    }
+}
+
+// Limpia jugadores con conexión cerrada
 function removeDeadPlayers() {
     for (let id in players) {
-        if (!players[id].alive) {
-            players[id].ws.close();
+        const p = players[id];
+        if (p.ws.readyState !== WebSocket.OPEN) {
             delete players[id];
         }
     }
@@ -253,7 +291,8 @@ setInterval(() => {
     handleCollisionsAndCombat(now);
     updateZone(now);
     applyZoneDamage(now);
-    removeDeadPlayers();
+    processRespawns();      // Revisar respawns después de posibles muertes
+    removeDeadPlayers();    // Eliminar solo desconectados
     broadcastGameState();
 }, 1000 / 20);
 
