@@ -1,5 +1,3 @@
-a ver pasame los arvhivos completos modificados
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -117,6 +115,9 @@ let attackCooldown = 0.8;
 let input = { dx: 0, dy: 0 };
 let ping = 0;
 
+// Variables para suavizado de cámara
+let cameraX = 0, cameraY = 0;
+
 function getPlayerColor(id, isMe, serverColor) {
     if (isMe) return "#88ff88";
     if (serverColor) return serverColor;
@@ -222,16 +223,16 @@ setInterval(() => {
     }
 }, 30);
 
-// Interpolación con factor más alto para reducir retraso (0.7 en lugar de 0.4)
+// Interpolación suave de jugadores (factor 0.55 = más fluido que 0.7)
 function interpolateAll() {
     for (let id in serverPlayers) {
         const sp = serverPlayers[id];
         if (!players[id]) {
             players[id] = { ...sp };
         } else {
-            // Factor 0.7 → más reactivo, pero aún suave
-            players[id].x += (sp.x - players[id].x) * 0.7;
-            players[id].y += (sp.y - players[id].y) * 0.7;
+            // Factor 0.55 → movimiento suave y sin temblores
+            players[id].x += (sp.x - players[id].x) * 0.55;
+            players[id].y += (sp.y - players[id].y) * 0.55;
             players[id].health = sp.health;
             players[id].color = sp.color;
             players[id].alive = sp.alive;
@@ -264,13 +265,18 @@ function draw() {
     const localPlayer = players[myId];
     if (!localPlayer) return;
     
-    let camX = localPlayer.x - canvas.width / 2;
-    let camY = localPlayer.y - canvas.height / 2;
+    // Suavizado de cámara: movemos la cámara suavemente hacia la posición del jugador
+    const targetCamX = localPlayer.x - canvas.width / 2;
+    const targetCamY = localPlayer.y - canvas.height / 2;
+    
+    // Factor de suavizado (0.1 = muy suave, 0.3 = rápido)
+    cameraX += (targetCamX - cameraX) * 0.15;
+    cameraY += (targetCamY - cameraY) * 0.15;
     
     ctx.save();
-    ctx.translate(-camX, -camY);
+    ctx.translate(-cameraX, -cameraY);
     
-    drawGround(camX, camY);
+    drawGround(cameraX, cameraY);
     
     // Zona segura
     ctx.beginPath();
@@ -353,5 +359,3 @@ gameLoop();
 </script>
 </body>
 </html>
-
-});
