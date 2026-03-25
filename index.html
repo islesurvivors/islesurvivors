@@ -178,10 +178,10 @@ ws.onmessage = (msg) => {
         }
         document.getElementById('aliveCount').innerText = aliveCount;
         
-        if (data.timestamp) {
-            ping = Date.now() - data.timestamp;
-            document.getElementById('pingValue').innerText = ping;
-        }
+       if (data.timestamp) {
+    ping = Math.max(0, Date.now() - data.timestamp);
+    document.getElementById('pingValue').innerText = ping;
+}
     }
     else if (data.type === 'damage') {
         if (data.target === myId) {
