@@ -1,3 +1,5 @@
+a ver pasame los arvhivos completos modificados
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -220,13 +222,14 @@ setInterval(() => {
     }
 }, 30);
 
-// Interpolación con factor más alto para reducir retraso (0.7)
+// Interpolación con factor más alto para reducir retraso (0.7 en lugar de 0.4)
 function interpolateAll() {
     for (let id in serverPlayers) {
         const sp = serverPlayers[id];
         if (!players[id]) {
             players[id] = { ...sp };
         } else {
+            // Factor 0.7 → más reactivo, pero aún suave
             players[id].x += (sp.x - players[id].x) * 0.7;
             players[id].y += (sp.y - players[id].y) * 0.7;
             players[id].health = sp.health;
@@ -350,3 +353,5 @@ gameLoop();
 </script>
 </body>
 </html>
+
+});
