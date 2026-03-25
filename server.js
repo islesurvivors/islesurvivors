@@ -245,7 +245,6 @@ function broadcastGameState() {
 }
 
 let lastTimestamp = Date.now() / 1000;
-// Aumentamos la frecuencia de actualización del servidor a 30 fps (antes 20 fps)
 setInterval(() => {
     const now = Date.now() / 1000;
     const deltaTime = Math.min(0.033, now - lastTimestamp);
@@ -256,7 +255,7 @@ setInterval(() => {
     applyZoneDamage(now);
     removeDeadPlayers();
     broadcastGameState();
-}, 1000 / 30);  // 30 fps → cada ~33 ms
+}, 1000 / 20);
 
 wss.on("connection", (ws) => {
     const id = Math.random().toString(36).substr(2, 9);
