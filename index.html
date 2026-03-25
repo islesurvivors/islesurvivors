@@ -3,8 +3,9 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-body { margin:0; overflow:hidden; background:#111; font-family: Arial, sans-serif; }
+body { margin:0; overflow:hidden; background:#111; font-family: 'Segoe UI', Arial, sans-serif; }
 canvas { display:block; cursor: crosshair; }
+
 #ui {
     position: fixed;
     top: 10px;
@@ -17,6 +18,7 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
     z-index: 10;
 }
+
 #ping {
     position: fixed;
     top: 10px;
@@ -29,6 +31,7 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
     z-index: 10;
 }
+
 #health {
     position: fixed;
     bottom: 20px;
@@ -41,12 +44,14 @@ canvas { display:block; cursor: crosshair; }
     border: 1px solid #fff;
     z-index: 10;
 }
+
 #healthBar {
     width: 100%;
     height: 100%;
     background: #ff3333;
     transition: width 0.2s;
 }
+
 #healthText {
     position: absolute;
     width: 100%;
@@ -57,6 +62,7 @@ canvas { display:block; cursor: crosshair; }
     font-size: 12px;
     text-shadow: 1px 1px 0 black;
 }
+
 #controlsInfo {
     position: fixed;
     bottom: 10px;
@@ -68,6 +74,7 @@ canvas { display:block; cursor: crosshair; }
     font-size: 12px;
     pointer-events: none;
 }
+
 .damageNumber {
     position: absolute;
     font-weight: bold;
@@ -77,28 +84,45 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
     z-index: 20;
 }
+
 @keyframes floatUp {
     0% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-40px); }
 }
+
+/* Mensaje de respawn minimalista con contador */
 #respawnMessage {
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: rgba(0,0,0,0.85);
-    color: #ffaa44;
-    padding: 20px 30px;
-    border-radius: 12px;
-    font-size: 28px;
-    font-weight: bold;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    color: white;
+    padding: 24px 48px;
+    border-radius: 24px;
     text-align: center;
     z-index: 100;
     display: none;
-    border: 2px solid #ffaa44;
-    box-shadow: 0 0 20px rgba(0,0,0,0.5);
-    font-family: monospace;
+    font-family: 'Segoe UI', system-ui, monospace;
     letter-spacing: 1px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+#respawnText {
+    font-size: 20px;
+    font-weight: 400;
+    margin-bottom: 12px;
+    opacity: 0.9;
+}
+
+#respawnCountdown {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: 0 0 10px rgba(255,255,255,0.6);
+    color: #ffaa44;
 }
 </style>
 </head>
@@ -118,7 +142,8 @@ canvas { display:block; cursor: crosshair; }
     🖱️ WASD o arrastrar | 💥 Colisión = combate automático
 </div>
 <div id="respawnMessage">
-    ✨ Reapareciendo espere 5 seg ✨
+    <div id="respawnText">Reapareciendo en</div>
+    <div id="respawnCountdown">5</div>
 </div>
 
 <script>
@@ -126,8 +151,8 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 let myId = null;
-let players = {};           // interpolados para render
-let serverPlayers = {};     // última posición real del servidor
+let players = {};
+let serverPlayers = {};
 let zone = { x: 800, y: 800, radius: 700 };
 let aliveCount = 0;
 let localPlayerHealth = 100;
@@ -136,6 +161,7 @@ let attackCooldown = 0.8;
 
 let input = { dx: 0, dy: 0 };
 let ping = 0;
+let deathTime = null; // momento de la muerte (ms)
 
 function getPlayerColor(id, isMe, serverColor) {
     if (isMe) return "#88ff88";
@@ -178,16 +204,15 @@ ws.onmessage = (msg) => {
         }
         document.getElementById('aliveCount').innerText = aliveCount;
         
-       if (data.timestamp) {
-    ping = Math.max(0, Date.now() - data.timestamp);
-    document.getElementById('pingValue').innerText = ping;
-}
+        if (data.timestamp) {
+            // Evitar ping negativo (si el reloj del servidor está adelantado)
+            ping = Math.max(0, Date.now() - data.timestamp);
+            document.getElementById('pingValue').innerText = ping;
+        }
     }
     else if (data.type === 'damage') {
         if (data.target === myId) {
             showDamageNumber(data.damage, true);
-            // No mostramos alerta aquí porque ahora hay respawn, pero se puede dejar
-            // si data.killed, el mensaje de respawn aparecerá por el estado
         } else if (data.from === myId) {
             showDamageNumber(data.damage, false, data.target);
         }
@@ -241,7 +266,6 @@ setInterval(() => {
     }
 }, 30);
 
-// Interpolación con factor más alto para reducir retraso (0.7 en lugar de 0.4)
 function interpolateAll() {
     for (let id in serverPlayers) {
         const sp = serverPlayers[id];
@@ -360,13 +384,25 @@ function draw() {
         ctx.fillStyle = "#ff8888";
         ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
     }
+}
+
+// Control del mensaje de respawn con contador
+function updateRespawnMessage() {
+    const localPlayer = players[myId];
+    const msgDiv = document.getElementById('respawnMessage');
+    const countdownSpan = document.getElementById('respawnCountdown');
     
-    // Mostrar/ocultar mensaje de respawn según estado del jugador local
-    const respawnDiv = document.getElementById('respawnMessage');
-    if (localPlayer && !localPlayer.alive) {
-        respawnDiv.style.display = 'block';
+    if (!localPlayer) return;
+    
+    if (!localPlayer.alive) {
+        if (deathTime === null) deathTime = Date.now();
+        const elapsed = (Date.now() - deathTime) / 1000;
+        let remaining = Math.max(0, Math.ceil(5 - elapsed));
+        countdownSpan.innerText = remaining;
+        msgDiv.style.display = 'block';
     } else {
-        respawnDiv.style.display = 'none';
+        if (deathTime !== null) deathTime = null;
+        msgDiv.style.display = 'none';
     }
 }
 
@@ -374,6 +410,7 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
     interpolateAll();
     draw();
+    updateRespawnMessage();
 }
 gameLoop();
 </script>
