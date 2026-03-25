@@ -15,7 +15,7 @@ const PLAYER_RADIUS = 15;
 const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
-const ZONE_SHRINK_TIME = 180;       // segundos
+const ZONE_SHRINK_TIME = 180;
 const ZONE_START_RADIUS = 700;
 const ZONE_MIN_RADIUS = 100;
 const ZONE_DAMAGE_PER_SECOND = 8;
@@ -39,7 +39,7 @@ class Player {
         this.speed = 200;
         this.alive = true;
         this.color = this.generateColor(id);
-        this.respawnTime = null; // momento (ms) para reaparecer
+        this.respawnTime = null;
     }
 
     generateColor(id) {
@@ -141,7 +141,6 @@ function handleCollisionsAndCombat(now) {
                 p2.x = Math.min(Math.max(p2.x - moveX, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
                 p2.y = Math.min(Math.max(p2.y - moveY, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
                 
-                // Combate
                 const combat = resolveCombat(p1, p2, now);
                 if (combat) {
                     if (combat.firstHit) sendDamageEvent(combat.firstHit);
@@ -192,7 +191,7 @@ function applyZoneDamage(now) {
         if (dist > zoneRadius) {
             const killed = p.takeDamage(ZONE_DAMAGE_PER_SECOND);
             if (killed) {
-                // Se puede enviar evento de muerte si se desea
+                // Puedes enviar un evento de muerte si lo deseas
             }
         }
     }
