@@ -160,8 +160,11 @@ let lastAttackTime = 0;
 let attackCooldown = 0.8;
 
 let input = { dx: 0, dy: 0 };
-let ping = 0;
-let deathTime = null; // momento de la muerte (ms)
+let deathTime = null;
+
+// Para el ping suavizado
+let pingHistory = [];
+const PING_HISTORY_LEN = 5;
 
 function getPlayerColor(id, isMe, serverColor) {
     if (isMe) return "#88ff88";
@@ -205,9 +208,12 @@ ws.onmessage = (msg) => {
         document.getElementById('aliveCount').innerText = aliveCount;
         
         if (data.timestamp) {
-            // Evitar ping negativo (si el reloj del servidor está adelantado)
-            ping = Math.max(0, Date.now() - data.timestamp);
-            document.getElementById('pingValue').innerText = ping;
+            let rawPing = Date.now() - data.timestamp;
+            if (rawPing < 0) rawPing = 0; // nunca negativo
+            pingHistory.push(rawPing);
+            if (pingHistory.length > PING_HISTORY_LEN) pingHistory.shift();
+            const avgPing = Math.round(pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length);
+            document.getElementById('pingValue').innerText = avgPing;
         }
     }
     else if (data.type === 'damage') {
