@@ -81,6 +81,25 @@ canvas { display:block; cursor: crosshair; }
     0% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-40px); }
 }
+#respawnMessage {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.85);
+    color: #ffaa44;
+    padding: 20px 30px;
+    border-radius: 12px;
+    font-size: 28px;
+    font-weight: bold;
+    text-align: center;
+    z-index: 100;
+    display: none;
+    border: 2px solid #ffaa44;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    font-family: monospace;
+    letter-spacing: 1px;
+}
 </style>
 </head>
 <body>
@@ -97,6 +116,9 @@ canvas { display:block; cursor: crosshair; }
 </div>
 <div id="controlsInfo">
     🖱️ WASD o arrastrar | 💥 Colisión = combate automático
+</div>
+<div id="respawnMessage">
+    ✨ Reapareciendo espere 5 seg ✨
 </div>
 
 <script>
@@ -164,9 +186,8 @@ ws.onmessage = (msg) => {
     else if (data.type === 'damage') {
         if (data.target === myId) {
             showDamageNumber(data.damage, true);
-            if (data.killed) {
-                setTimeout(() => alert("💀 Has muerto! La isla te ha vencido."), 100);
-            }
+            // No mostramos alerta aquí porque ahora hay respawn, pero se puede dejar
+            // si data.killed, el mensaje de respawn aparecerá por el estado
         } else if (data.from === myId) {
             showDamageNumber(data.damage, false, data.target);
         }
@@ -227,7 +248,6 @@ function interpolateAll() {
         if (!players[id]) {
             players[id] = { ...sp };
         } else {
-            // Factor 0.7 → más reactivo, pero aún suave
             players[id].x += (sp.x - players[id].x) * 0.7;
             players[id].y += (sp.y - players[id].y) * 0.7;
             players[id].health = sp.health;
@@ -339,6 +359,14 @@ function draw() {
     if (zone.radius < 300) {
         ctx.fillStyle = "#ff8888";
         ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
+    }
+    
+    // Mostrar/ocultar mensaje de respawn según estado del jugador local
+    const respawnDiv = document.getElementById('respawnMessage');
+    if (localPlayer && !localPlayer.alive) {
+        respawnDiv.style.display = 'block';
+    } else {
+        respawnDiv.style.display = 'none';
     }
 }
 
