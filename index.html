@@ -605,20 +605,6 @@ canvas { display:block; cursor: crosshair; }
                     ctx.stroke();
                 }
             }
-            
-            ctx.save();
-            ctx.globalAlpha = 0.35;
-            ctx.fillStyle = "#ff0000";
-            const hitboxLeft = p.x - SPRITE_W/2;
-            const hitboxTop = p.y;
-            const hitboxWidth = SPRITE_W;
-            const hitboxHeight = SPRITE_H/2;
-            ctx.fillRect(hitboxLeft, hitboxTop, hitboxWidth, hitboxHeight);
-            ctx.strokeStyle = "#ff6666";
-            ctx.lineWidth = 1.5;
-            ctx.globalAlpha = 0.8;
-            ctx.strokeRect(hitboxLeft, hitboxTop, hitboxWidth, hitboxHeight);
-            ctx.restore();
         }
         ctx.restore();
         
