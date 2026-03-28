@@ -229,7 +229,11 @@ canvas { display:block; cursor: crosshair; }
         else if (key === 's') { keyState.s = true; changed = true; e.preventDefault(); }
         else if (key === 'a') { keyState.a = true; changed = true; e.preventDefault(); }
         else if (key === 'd') { keyState.d = true; changed = true; e.preventDefault(); }
-        if (changed) updateInputFromKeys();
+        if (changed) {
+            updateInputFromKeys();
+            // Al usar teclado, desactivamos el modo táctil para la dirección
+            isTouchInput = false;
+        }
     }
     
     function handleKeyUp(e) {
@@ -290,6 +294,9 @@ canvas { display:block; cursor: crosshair; }
     let playerAnim = {};
     const currentFrameSpan = document.getElementById('currentFrame');
     const timeToNextSpan = document.getElementById('timeToNext');
+
+    // Variable para saber si la entrada actual es táctil (mobile) o teclado
+    let isTouchInput = false;
 
     function getPlayerColor(id, isMe, serverColor) {
         if (isMe) return "#88ff88";
@@ -362,12 +369,13 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
-    // Touch (mantiene comportamiento original)
+    // Touch handlers modificados para activar el modo táctil
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
+        isTouchInput = true; // Activamos modo táctil
     });
     canvas.addEventListener("touchmove", (e) => {
         e.preventDefault();
@@ -377,12 +385,14 @@ canvas { display:block; cursor: crosshair; }
         input.dx = dx / mag;
         input.dy = dy / mag;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
+        isTouchInput = true; // Mantenemos modo táctil durante el movimiento
     });
     canvas.addEventListener("touchend", (e) => {
         e.preventDefault();
         input.dx = 0;
         input.dy = 0;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
+        // No cambiamos isTouchInput aquí para que la última dirección táctil se mantenga en el idle
     });
 
     setInterval(() => {
@@ -416,20 +426,26 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    // ========== NUEVA LÓGICA DE DIRECCIÓN: PRIORIDAD VERTICAL ==========
-    // Para diagonales se usa arriba o abajo, no izquierda/derecha.
+    // Función de dirección modificada: dos modos según isTouchInput
     function getDirectionFromMovement(dx, dy) {
-        // Si hay movimiento vertical significativo (dy no es cero), priorizamos arriba/abajo
-        if (Math.abs(dy) > 0.01) {
-            return dy > 0 ? 'down' : 'up';
-        }
-        // Si no, movimiento horizontal puro
-        if (Math.abs(dx) > 0.01) {
-            return dx > 0 ? 'right' : 'left';
+        if (isTouchInput) {
+            // Modo táctil: eje dominante (más natural para arrastre)
+            if (Math.abs(dx) > Math.abs(dy)) {
+                return dx > 0 ? 'right' : 'left';
+            } else if (Math.abs(dy) > 0.01) {
+                return dy > 0 ? 'down' : 'up';
+            }
+        } else {
+            // Modo teclado: prioridad vertical (para diagonales con teclas)
+            if (Math.abs(dy) > 0.01) {
+                return dy > 0 ? 'down' : 'up';
+            }
+            if (Math.abs(dx) > 0.01) {
+                return dx > 0 ? 'right' : 'left';
+            }
         }
         return null;
     }
-    // ================================================================
 
     function updateAnimations() {
         const now = performance.now() / 1000;
