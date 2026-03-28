@@ -315,7 +315,7 @@ function interpolateAll() {
             players[id] = { ...sp };
             // Inicializar animación
             playerAnim[id] = {
-                frame: 1,                      // frame quieto
+                frame: 1,                      // frame quieto (índice 1)
                 directionRow: 0,               // abajo por defecto
                 moving: false,
                 lastVisualX: sp.x,
@@ -365,25 +365,22 @@ function updateAnimations() {
         if (moving && direction) {
             const newRow = DIRECTION_TO_ROW[direction];
             if (anim.directionRow !== newRow) {
-                // Cambio de dirección: nuevo frame aleatorio, reiniciar acumulador
+                // Cambio de dirección: reiniciar frame al inicio (0) y acumulador
                 anim.directionRow = newRow;
-                anim.frame = Math.floor(Math.random() * 4);
+                anim.frame = 0;
                 anim.distanceAccum = 0;
             } else {
                 // Misma dirección: acumular distancia
                 anim.distanceAccum += distance;
                 if (anim.distanceAccum >= DIST_PER_FRAME) {
-                    let newFrame;
-                    do {
-                        newFrame = Math.floor(Math.random() * 4);
-                    } while (newFrame === anim.frame && Math.random() < 0.7);
-                    anim.frame = newFrame;
+                    // Avanzar al siguiente frame cíclicamente (0,1,2,3,0...)
+                    anim.frame = (anim.frame + 1) % 4;
                     anim.distanceAccum = 0;
                 }
             }
             anim.moving = true;
         } else {
-            // No se mueve: frame quieto y reiniciar acumulador
+            // No se mueve: frame quieto (índice 1) y reiniciar acumulador
             anim.frame = 1;
             anim.moving = false;
             anim.distanceAccum = 0;
