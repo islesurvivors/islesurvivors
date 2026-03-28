@@ -372,7 +372,7 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
-    // Touch handlers modificados para activar el modo táctil
+    // Touch handlers
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
@@ -424,7 +424,9 @@ canvas { display:block; cursor: crosshair; }
         targetPos = { x: worldX, y: worldY };
         // Cancelar cualquier entrada manual para que prevalezca el click
         keyState.w = keyState.s = keyState.a = keyState.d = false;
-        isTouchInput = false;
+        isTouchInput = false; // usar lógica de teclado (prioridad vertical) para la dirección
+        // Si prefieres que el click use la misma lógica que el móvil (eje dominante), descomenta la línea:
+        // isTouchInput = true;
         // input se calculará en el próximo envío
     });
 
