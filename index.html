@@ -90,7 +90,6 @@ canvas { display:block; cursor: crosshair; }
     100% { opacity: 0; transform: translateY(-40px); }
 }
 
-/* Mensaje de respawn minimalista con contador */
 #respawnMessage {
     position: fixed;
     top: 50%;
@@ -162,14 +161,17 @@ let attackCooldown = 0.8;
 let input = { dx: 0, dy: 0 };
 let deathTime = null;
 
-// Para el ping suavizado
 let pingHistory = [];
 const PING_HISTORY_LEN = 5;
 
-// ========== CONFIGURACIÓN DEL SPRITE ==========
+// ========== CONFIGURACIÓN DEL SPRITE (CORREGIDO) ==========
 const SPRITE_URL = "ch003.png";
-const TILE_SIZE = 128;        // px (cada frame)
-const SPRITE_SCALE = 0.375;   // 48px de ancho/alto final
+const TOTAL_IMAGE_SIZE = 128;      // la imagen completa mide 128x128 píxeles
+const TILES_PER_ROW = 4;            // 4x4 grid
+const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW; // 32 píxeles por tile
+
+// Escala de dibujo: 48x48 píxeles finales (mismo tamaño visual que antes)
+const SPRITE_SCALE = 48 / TILE_SIZE; // 1.5 (48/32)
 const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
 const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
 
@@ -177,21 +179,25 @@ let spriteSheet = new Image();
 let spriteLoaded = false;
 spriteSheet.onload = () => {
     spriteLoaded = true;
-    console.log("Sprite sheet cargado correctamente");
+    console.log("Sprite sheet cargado correctamente (128x128, tiles 32x32)");
 };
 spriteSheet.src = SPRITE_URL;
 
 // Mapeo de dirección a fila en el sprite sheet
-// 0 = arriba (W), 1 = abajo (S), 2 = izquierda (A), 3 = derecha (D)
+// Según el usuario:
+// - Fila 0: abajo (S)
+// - Fila 1: arriba (W)
+// - Fila 2: izquierda (A)
+// - Fila 3: derecha (D)
 const DIRECTION_TO_ROW = {
-    up: 0,
-    down: 1,
+    down: 0,
+    up: 1,
     left: 2,
     right: 3
 };
 
 // Animación por jugador
-let playerAnim = {}; // { [id]: { frame, lastChange, directionRow, moving } }
+let playerAnim = {}; // { [id]: { frame, lastChange, directionRow, moving, lastX, lastY } }
 
 // ========== FUNCIONES AUXILIARES ==========
 function getPlayerColor(id, isMe, serverColor) {
@@ -294,7 +300,6 @@ canvas.addEventListener("touchend", () => {
     input.dy = 0;
 });
 
-// Envío de input al servidor cada 30ms
 setInterval(() => {
     if (ws.readyState === 1 && myId) {
         ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
@@ -311,7 +316,7 @@ function interpolateAll() {
             playerAnim[id] = {
                 frame: 0,
                 lastChange: performance.now() / 1000,
-                directionRow: 0, // por defecto abajo
+                directionRow: 0, // por defecto abajo (fila 0)
                 moving: false,
                 lastX: sp.x,
                 lastY: sp.y
@@ -373,7 +378,6 @@ function updateAnimations() {
                 anim.lastX = p.x;
                 anim.lastY = p.y;
             } else {
-                // Si no hay anim, crear una
                 playerAnim[id] = {
                     frame: 0,
                     lastChange: now,
@@ -413,7 +417,7 @@ function updateAnimations() {
             // No se mueve: resetear frame a 0 (quieto)
             anim.frame = 0;
             anim.moving = false;
-            // Opcional: mantener la última dirección para que al detenerse muestre el primer frame de esa fila
+            // Mantenemos la última dirección para que al detenerse muestre el primer frame de esa fila
         }
     }
 }
@@ -473,14 +477,7 @@ function draw() {
         const isMe = (id === myId);
         const anim = playerAnim[id] || { frame: 0, directionRow: 0 };
         
-        // Determinar fila según la dirección que tenga guardada
-        let row = anim.directionRow;
-        // Si no se está moviendo, usar la última fila (o la de abajo por defecto)
-        if (!anim.moving) {
-            // Podríamos mantener la fila, pero a veces se queda en la última dirección
-            // Si no hay movimiento, usamos la fila actual (así se ve quieto con la dirección anterior)
-        }
-        
+        const row = anim.directionRow;
         const frameCol = anim.frame;
         
         // Dibujar sprite si está cargado, si no, un círculo de respaldo
@@ -501,7 +498,7 @@ function draw() {
             ctx.stroke();
         }
         
-        // Barra de vida (siempre encima del sprite)
+        // Barra de vida
         const healthPercent = p.health / 100;
         const barWidth = 30;
         const barHeight = 6;
