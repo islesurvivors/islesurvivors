@@ -170,16 +170,20 @@ const TOTAL_IMAGE_SIZE = 128;      // la imagen completa mide 128x128 píxeles
 const TILES_PER_ROW = 4;            // 4x4 grid
 const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW; // 32 píxeles por tile
 
-// Escala de dibujo: 48x48 píxeles finales (mismo tamaño visual que antes)
-const SPRITE_SCALE = 48 / TILE_SIZE; // 1.5 (48/32)
+// Escala de dibujo: 48x48 píxeles finales
+const SPRITE_SCALE = 48 / TILE_SIZE; // 1.5
 const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
 const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
+
+// Recorte para eliminar el borde superior no deseado (1 píxel)
+const CROP_TOP = 1;                 // píxeles a recortar desde arriba
+const CROP_HEIGHT = TILE_SIZE - CROP_TOP; // 31 píxeles de alto útil
 
 let spriteSheet = new Image();
 let spriteLoaded = false;
 spriteSheet.onload = () => {
     spriteLoaded = true;
-    console.log("Sprite sheet cargado correctamente (128x128, tiles 32x32)");
+    console.log("Sprite sheet cargado correctamente (128x128, tiles 32x32, recorte superior de 1px)");
 };
 spriteSheet.src = SPRITE_URL;
 
@@ -314,9 +318,9 @@ function interpolateAll() {
             players[id] = { ...sp };
             // Inicializar animación
             playerAnim[id] = {
-                frame: 0,
+                frame: 1,               // frame quieto por defecto (índice 1)
                 lastChange: performance.now() / 1000,
-                directionRow: 0, // por defecto abajo (fila 0)
+                directionRow: 0,        // por defecto abajo (fila 0)
                 moving: false,
                 lastX: sp.x,
                 lastY: sp.y
@@ -345,7 +349,7 @@ function getDirectionFromMovement(dx, dy) {
 // Actualiza la animación de todos los jugadores
 function updateAnimations() {
     const now = performance.now() / 1000;
-    const ANIM_INTERVAL = 0.2; // segundos entre cambios de frame
+    const ANIM_INTERVAL = 0.25; // segundos entre cambios de frame (más pausado)
 
     for (let id in players) {
         const p = players[id];
@@ -379,7 +383,7 @@ function updateAnimations() {
                 anim.lastY = p.y;
             } else {
                 playerAnim[id] = {
-                    frame: 0,
+                    frame: 1,
                     lastChange: now,
                     directionRow: 0,
                     moving: false,
@@ -407,17 +411,16 @@ function updateAnimations() {
                     let newFrame;
                     do {
                         newFrame = Math.floor(Math.random() * 4);
-                    } while (newFrame === anim.frame && Math.random() < 0.7); // evita repetir consecutivo con cierta probabilidad
+                    } while (newFrame === anim.frame && Math.random() < 0.7); // evita repetir consecutivo
                     anim.frame = newFrame;
                     anim.lastChange = now;
                 }
             }
             anim.moving = true;
         } else {
-            // No se mueve: resetear frame a 0 (quieto)
-            anim.frame = 0;
+            // No se mueve: mostrar frame quieto (índice 1)
+            anim.frame = 1;
             anim.moving = false;
-            // Mantenemos la última dirección para que al detenerse muestre el primer frame de esa fila
         }
     }
 }
@@ -475,18 +478,23 @@ function draw() {
         if (!p.alive) continue;
         
         const isMe = (id === myId);
-        const anim = playerAnim[id] || { frame: 0, directionRow: 0 };
+        const anim = playerAnim[id] || { frame: 1, directionRow: 0 };
         
         const row = anim.directionRow;
         const frameCol = anim.frame;
         
         // Dibujar sprite si está cargado, si no, un círculo de respaldo
         if (spriteLoaded) {
-            ctx.drawImage(
-                spriteSheet,
-                frameCol * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE,
-                p.x - SPRITE_W/2, p.y - SPRITE_H/2, SPRITE_W, SPRITE_H
-            );
+            // Recortar el tile eliminando el borde superior de 1px
+            const srcX = frameCol * TILE_SIZE;
+            const srcY = row * TILE_SIZE + CROP_TOP;  // desplazar 1px hacia abajo
+            const srcW = TILE_SIZE;
+            const srcH = CROP_HEIGHT;                 // 31px de alto
+            const destX = p.x - SPRITE_W/2;
+            const destY = p.y - SPRITE_H/2;
+            const destW = SPRITE_W;
+            const destH = SPRITE_H;                   // altura final sin cambios
+            ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
         } else {
             // Fallback: círculo
             ctx.beginPath();
