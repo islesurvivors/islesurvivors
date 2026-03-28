@@ -205,7 +205,7 @@ canvas { display:block; cursor: crosshair; }
     let lastAttackTime = 0;
     let attackCooldown = 0.8;
 
-    // Estado individual de cada tecla de movimiento (fix opuestos)
+    // Estado individual de teclas (fix opuestos)
     const keyState = {
         w: false,
         s: false,
@@ -362,12 +362,14 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
-    // Touch (mantiene comportamiento original)
+    // Touch con comportamiento mejorado: limpia teclas y marca input táctil
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
+        // Al tocar, desactivamos el estado de teclado (para que prevalezca el toque)
+        keyState.w = keyState.s = keyState.a = keyState.d = false;
     });
     canvas.addEventListener("touchmove", (e) => {
         e.preventDefault();
@@ -376,6 +378,7 @@ canvas { display:block; cursor: crosshair; }
         let mag = Math.hypot(dx, dy) || 1;
         input.dx = dx / mag;
         input.dy = dy / mag;
+        // Limpiar teclas para que no interfieran
         keyState.w = keyState.s = keyState.a = keyState.d = false;
     });
     canvas.addEventListener("touchend", (e) => {
@@ -416,20 +419,25 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    // ========== NUEVA LÓGICA DE DIRECCIÓN: PRIORIDAD VERTICAL ==========
-    // Para diagonales se usa arriba o abajo, no izquierda/derecha.
-    function getDirectionFromMovement(dx, dy) {
-        // Si hay movimiento vertical significativo (dy no es cero), priorizamos arriba/abajo
-        if (Math.abs(dy) > 0.01) {
-            return dy > 0 ? 'down' : 'up';
-        }
-        // Si no, movimiento horizontal puro
-        if (Math.abs(dx) > 0.01) {
-            return dx > 0 ? 'right' : 'left';
+    // Función auxiliar para obtener dirección según el tipo de entrada
+    function getDirectionFromMovement(deltaX, deltaY, useDominantAxis = false) {
+        if (useDominantAxis) {
+            // Modo táctil: elegir el eje con mayor desplazamiento
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                return deltaX > 0 ? 'right' : 'left';
+            } else if (Math.abs(deltaY) > 0) {
+                return deltaY > 0 ? 'down' : 'up';
+            }
+        } else {
+            // Modo teclado: prioridad vertical (original)
+            if (Math.abs(deltaY) > 0.01) {
+                return deltaY > 0 ? 'down' : 'up';
+            } else if (Math.abs(deltaX) > 0.01) {
+                return deltaX > 0 ? 'right' : 'left';
+            }
         }
         return null;
     }
-    // ================================================================
 
     function updateAnimations() {
         const now = performance.now() / 1000;
@@ -469,9 +477,10 @@ canvas { display:block; cursor: crosshair; }
                 }
             }
             
-            // Cambio de dirección solo si el desplazamiento supera el umbral
+            // Determinar dirección a partir del movimiento (para todos los jugadores)
             if (distance > DIRECTION_THRESHOLD) {
-                const direction = getDirectionFromMovement(deltaX, deltaY);
+                // Para otros jugadores, siempre usamos el modo tradicional (vertical priority)
+                const direction = getDirectionFromMovement(deltaX, deltaY, false);
                 if (direction) {
                     const newRow = DIRECTION_TO_ROW[direction];
                     if (anim.directionRow !== newRow) {
@@ -484,6 +493,57 @@ canvas { display:block; cursor: crosshair; }
                 }
             }
             
+            // --- Lógica especial para el jugador local (diferenciar teclado vs táctil) ---
+            if (id === myId && anim.moving) {
+                // Determinar si hay teclas presionadas (origen teclado)
+                const anyKeyPressed = keyState.w || keyState.s || keyState.a || keyState.d;
+                let useDominant = false;
+                let vectorX = 0, vectorY = 0;
+                
+                if (anyKeyPressed) {
+                    // Entrada por teclado: usar el vector de input (dx, dy) que ya refleja las teclas
+                    vectorX = input.dx;
+                    vectorY = input.dy;
+                    useDominant = false;  // modo teclado: prioridad vertical
+                } else if (input.dx !== 0 || input.dy !== 0) {
+                    // Entrada táctil (no hay teclas activas pero input tiene vector)
+                    vectorX = input.dx;
+                    vectorY = input.dy;
+                    useDominant = true;   // modo táctil: eje dominante
+                }
+                
+                if ((vectorX !== 0 || vectorY !== 0) && (Math.abs(vectorX) > 0.01 || Math.abs(vectorY) > 0.01)) {
+                    // Calcular dirección según el modo
+                    let dir = null;
+                    if (useDominant) {
+                        if (Math.abs(vectorX) > Math.abs(vectorY)) {
+                            dir = vectorX > 0 ? 'right' : 'left';
+                        } else if (Math.abs(vectorY) > 0) {
+                            dir = vectorY > 0 ? 'down' : 'up';
+                        }
+                    } else {
+                        // Modo teclado: prioridad vertical
+                        if (Math.abs(vectorY) > 0.01) {
+                            dir = vectorY > 0 ? 'down' : 'up';
+                        } else if (Math.abs(vectorX) > 0.01) {
+                            dir = vectorX > 0 ? 'right' : 'left';
+                        }
+                    }
+                    
+                    if (dir) {
+                        const newRow = DIRECTION_TO_ROW[dir];
+                        if (anim.directionRow !== newRow) {
+                            anim.directionRow = newRow;
+                            if (anim.moving) {
+                                anim.frame = 0;
+                                anim.nextFrameTime = now + animInterval;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Avance de frames
             if (anim.moving && now >= anim.nextFrameTime) {
                 anim.frame = (anim.frame + 1) % 4;
                 anim.nextFrameTime = now + animInterval;
