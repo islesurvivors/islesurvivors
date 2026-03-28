@@ -166,7 +166,7 @@ canvas { display:block; cursor: crosshair; }
     🖱️ WASD o arrastrar | 💥 Colisión = combate automático
 </div>
 <div id="animDistanceControl">
-    <span>🚶 Distancia por paso:</span>
+    <span>🚶 Distancia por frame:</span>
     <input type="range" id="distPerFrameSlider" min="4" max="24" step="1" value="12">
     <span id="animDistanceValue">12 px</span>
 </div>
@@ -404,7 +404,7 @@ function updateAnimations() {
         if (moving && direction) {
             const newRow = DIRECTION_TO_ROW[direction];
             if (anim.directionRow !== newRow) {
-                // Cambio de dirección: reiniciar frame al primero de movimiento (0) y acumulador
+                // Cambio de dirección: reiniciar frame al inicio (0) y acumulador
                 anim.directionRow = newRow;
                 anim.frame = 0;
                 anim.distanceAccum = 0;
@@ -412,8 +412,8 @@ function updateAnimations() {
                 // Misma dirección: acumular distancia
                 anim.distanceAccum += distance;
                 if (anim.distanceAccum >= distancePerFrame) {
-                    // Alternar entre frames 0 y 2 (índices 0 y 2)
-                    anim.frame = (anim.frame === 0) ? 2 : 0;
+                    // Avanzar al siguiente frame cíclicamente 0→1→2→3→0...
+                    anim.frame = (anim.frame + 1) % 4;
                     anim.distanceAccum = 0;
                 }
             }
