@@ -259,7 +259,7 @@ canvas { display:block; cursor: crosshair; }
     const TOTAL_IMAGE_SIZE = 128;
     const TILES_PER_ROW = 4;
     const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW;
-    const SPRITE_SCALE = 28 / TILE_SIZE;
+    const SPRITE_SCALE = 36 / TILE_SIZE;
     const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
     const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
     const CROP_LEFT = 0;
@@ -546,12 +546,18 @@ canvas { display:block; cursor: crosshair; }
         ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
         ctx.stroke();
         
-        const barWidth = 26;
+        const barWidth = 32;
         const barHeight = 6;
         
+        const playerList = [];
         for (let id in players) {
-            const p = players[id];
-            if (!p.alive) continue;
+            if (players[id].alive) {
+                playerList.push({ id, p: players[id] });
+            }
+        }
+        playerList.sort((a, b) => a.p.y - b.p.y);
+        
+        for (const { id, p } of playerList) {
             const isMe = (id === myId);
             const anim = playerAnim[id] || { frame: 1, directionRow: 0 };
             const row = anim.directionRow;
@@ -577,7 +583,7 @@ canvas { display:block; cursor: crosshair; }
             
             const healthPercent = p.health / 100;
             const barX = p.x - barWidth / 2;
-            const barY = p.y - SPRITE_H/2 - 10;
+            const barY = p.y - SPRITE_H/2 - 12;
             ctx.fillStyle = "#333";
             ctx.fillRect(barX, barY, barWidth, barHeight);
             ctx.fillStyle = "#ff3333";
@@ -586,7 +592,7 @@ canvas { display:block; cursor: crosshair; }
             ctx.font = "12px Arial";
             ctx.fillStyle = "white";
             ctx.shadowBlur = 2;
-            ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 12);
+            ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
             
             if (isMe && lastAttackTime) {
                 const now = Date.now() / 1000;
@@ -599,6 +605,15 @@ canvas { display:block; cursor: crosshair; }
                     ctx.stroke();
                 }
             }
+            
+            ctx.globalAlpha = 0.4;
+            ctx.fillStyle = "#ff0000";
+            const hitboxTopY = p.y;
+            const hitboxBottomY = p.y + SPRITE_H/2;
+            const hitboxLeftX = p.x - SPRITE_W/2;
+            const hitboxRightX = p.x + SPRITE_W/2;
+            ctx.fillRect(hitboxLeftX, hitboxTopY, SPRITE_W, SPRITE_H/2);
+            ctx.globalAlpha = 1.0;
         }
         ctx.restore();
         
