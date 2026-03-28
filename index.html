@@ -205,7 +205,25 @@ canvas { display:block; cursor: crosshair; }
     let lastAttackTime = 0;
     let attackCooldown = 0.8;
 
+    // --- NUEVO: sistema de teclas con conjunto activo ---
+    const activeKeys = new Set();
     let input = { dx: 0, dy: 0 };
+
+    // Función que recalcula input.dx/.dy según las teclas activas
+    function updateInputFromActiveKeys() {
+        let dx = 0, dy = 0;
+        if (activeKeys.has('KeyW') || activeKeys.has('ArrowUp')) dy -= 1;
+        if (activeKeys.has('KeyS') || activeKeys.has('ArrowDown')) dy += 1;
+        if (activeKeys.has('KeyA') || activeKeys.has('ArrowLeft')) dx -= 1;
+        if (activeKeys.has('KeyD') || activeKeys.has('ArrowRight')) dx += 1;
+
+        // Opcional: normalizar para diagonales (velocidad constante)
+        // pero mantenemos el comportamiento original del juego (sin normalizar)
+        input.dx = dx;
+        input.dy = dy;
+    }
+    // ------------------------------------------------
+
     let deathTime = null;
 
     let pingHistory = [];
@@ -327,16 +345,31 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
+    // --- NUEVO: manejo de teclas con Set ---
     document.addEventListener("keydown", (e) => {
-        if (e.key === "w") input.dy = -1;
-        if (e.key === "s") input.dy = 1;
-        if (e.key === "a") input.dx = -1;
-        if (e.key === "d") input.dx = 1;
+        const code = e.code;
+        // Solo teclas de movimiento (WASD + flechas)
+        if (code === 'KeyW' || code === 'KeyS' || code === 'KeyA' || code === 'KeyD' ||
+            code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight') {
+            e.preventDefault(); // evitar scroll con flechas
+            if (!activeKeys.has(code)) {
+                activeKeys.add(code);
+                updateInputFromActiveKeys();
+            }
+        }
     });
     document.addEventListener("keyup", (e) => {
-        if (["w","s"].includes(e.key)) input.dy = 0;
-        if (["a","d"].includes(e.key)) input.dx = 0;
+        const code = e.code;
+        if (code === 'KeyW' || code === 'KeyS' || code === 'KeyA' || code === 'KeyD' ||
+            code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight') {
+            e.preventDefault();
+            if (activeKeys.has(code)) {
+                activeKeys.delete(code);
+                updateInputFromActiveKeys();
+            }
+        }
     });
+    // ------------------------------------------------
 
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
@@ -356,6 +389,7 @@ canvas { display:block; cursor: crosshair; }
         e.preventDefault();
         input.dx = 0;
         input.dy = 0;
+        // También limpiamos teclas táctiles? No afecta al teclado.
     });
 
     setInterval(() => {
@@ -398,6 +432,16 @@ canvas { display:block; cursor: crosshair; }
         return null;
     }
 
+    // Obtiene dirección basada en input (para jugador local) de forma estable
+    function getDirectionFromInput(dx, dy) {
+        if (dx === 0 && dy === 0) return null;
+        if (Math.abs(dx) > Math.abs(dy)) {
+            return dx > 0 ? 'right' : 'left';
+        } else {
+            return dy > 0 ? 'down' : 'up';
+        }
+    }
+
     function updateAnimations() {
         const now = performance.now() / 1000;
         for (let id in players) {
@@ -407,22 +451,39 @@ canvas { display:block; cursor: crosshair; }
             const anim = playerAnim[id];
             if (!anim) continue;
 
-            // Calcular desplazamiento desde la última posición visual
-            const deltaX = p.x - anim.lastVisualX;
-            const deltaY = p.y - anim.lastVisualY;
-            const distance = Math.hypot(deltaX, deltaY);
-            
-            // Actualizar última posición visual
-            anim.lastVisualX = p.x;
-            anim.lastVisualY = p.y;
-            
-            // Umbrales: movimiento si > 0.5 px, cambio de dirección si > 2 px
-            const MOVEMENT_THRESHOLD = 0.5;
-            const DIRECTION_THRESHOLD = 2.0;
-            
-            const isMoving = distance > MOVEMENT_THRESHOLD;
-            
-            // Manejar estado de movimiento con persistencia (3 frames de inactividad para detenerse)
+            const isLocal = (id === myId);
+            let newDirection = null;
+            let isMoving = false;
+
+            if (isLocal) {
+                // Para el jugador local: usamos el input (teclas) para determinar dirección y movimiento
+                const hasInput = (input.dx !== 0 || input.dy !== 0);
+                if (hasInput) {
+                    isMoving = true;
+                    newDirection = getDirectionFromInput(input.dx, input.dy);
+                } else {
+                    isMoving = false;
+                }
+                // Actualizar última posición visual (necesaria para otros cálculos aunque no se use para dirección)
+                anim.lastVisualX = p.x;
+                anim.lastVisualY = p.y;
+            } else {
+                // Para otros jugadores: usamos desplazamiento visual como antes
+                const deltaX = p.x - anim.lastVisualX;
+                const deltaY = p.y - anim.lastVisualY;
+                const distance = Math.hypot(deltaX, deltaY);
+                anim.lastVisualX = p.x;
+                anim.lastVisualY = p.y;
+
+                const MOVEMENT_THRESHOLD = 0.5;
+                const DIRECTION_THRESHOLD = 2.0;
+                isMoving = distance > MOVEMENT_THRESHOLD;
+                if (distance > DIRECTION_THRESHOLD) {
+                    newDirection = getDirectionFromMovement(deltaX, deltaY);
+                }
+            }
+
+            // Manejo de idleCounter (para que no se corte la animación bruscamente)
             if (isMoving) {
                 anim.idleCounter = 0;
                 if (!anim.moving) {
@@ -437,35 +498,31 @@ canvas { display:block; cursor: crosshair; }
                     if (anim.idleCounter >= 3) {
                         anim.moving = false;
                         anim.frame = 1; // frame idle
-                        // No reiniciamos nextFrameTime para que al retomar el ciclo continúe
                     }
                 }
             }
-            
-            // Actualizar dirección si el desplazamiento supera el umbral de dirección
-            if (distance > DIRECTION_THRESHOLD) {
-                const direction = getDirectionFromMovement(deltaX, deltaY);
-                if (direction) {
-                    const newRow = DIRECTION_TO_ROW[direction];
-                    if (anim.directionRow !== newRow) {
-                        anim.directionRow = newRow;
-                        if (anim.moving) {
-                            // Cambio de dirección: reiniciar ciclo desde frame 0
-                            anim.frame = 0;
-                            anim.nextFrameTime = now + animInterval;
-                        }
+
+            // Actualizar dirección si hay una nueva y es diferente a la actual
+            if (newDirection !== null) {
+                const newRow = DIRECTION_TO_ROW[newDirection];
+                if (anim.directionRow !== newRow) {
+                    anim.directionRow = newRow;
+                    if (anim.moving) {
+                        // Cambio de dirección: reiniciar ciclo desde frame 0
+                        anim.frame = 0;
+                        anim.nextFrameTime = now + animInterval;
                     }
                 }
             }
-            
+
             // Avanzar frames si está en movimiento y ha pasado el tiempo
             if (anim.moving && now >= anim.nextFrameTime) {
                 anim.frame = (anim.frame + 1) % 4;
                 anim.nextFrameTime = now + animInterval;
             }
-            
+
             // Actualizar debug para el jugador local
-            if (id === myId) {
+            if (isLocal) {
                 if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
                 if (timeToNextSpan) {
                     const timeLeft = Math.max(0, anim.nextFrameTime - now);
