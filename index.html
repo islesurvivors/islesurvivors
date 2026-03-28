@@ -606,18 +606,23 @@ canvas { display:block; cursor: crosshair; }
                 }
             }
             
+            // Hitbox visual eliminado (ya no se dibuja)
+            // Si en el futuro quisieras verlo, podrías descomentar este bloque.
+            /*
             ctx.save();
             ctx.globalAlpha = 0.4;
             ctx.fillStyle = "#ff3333";
-            const hitboxHeight = SPRITE_H / 4;
-            const hitboxLeft = p.x - SPRITE_W/2;
+            const hitboxHeight = SPRITE_H / 4;       // altura (puedes ajustar)
+            const hitboxWidth = SPRITE_W * 0.7;      // más estrecho (70% del ancho)
+            const hitboxLeft = p.x - hitboxWidth/2;
             const hitboxTop = p.y + SPRITE_H/2 - hitboxHeight;
-            ctx.fillRect(hitboxLeft, hitboxTop, SPRITE_W, hitboxHeight);
+            ctx.fillRect(hitboxLeft, hitboxTop, hitboxWidth, hitboxHeight);
             ctx.strokeStyle = "#ff8888";
             ctx.lineWidth = 1;
             ctx.globalAlpha = 0.7;
-            ctx.strokeRect(hitboxLeft, hitboxTop, SPRITE_W, hitboxHeight);
+            ctx.strokeRect(hitboxLeft, hitboxTop, hitboxWidth, hitboxHeight);
             ctx.restore();
+            */
         }
         ctx.restore();
         
