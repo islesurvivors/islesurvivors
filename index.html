@@ -164,7 +164,7 @@ let deathTime = null;
 let pingHistory = [];
 const PING_HISTORY_LEN = 5;
 
-// ========== CONFIGURACIÓN DEL SPRITE ==========
+// ========== CONFIGURACIÓN DEL SPRITE (AJUSTABLE) ==========
 const SPRITE_URL = "ch003.png";
 const TOTAL_IMAGE_SIZE = 128;      // imagen completa 128x128
 const TILES_PER_ROW = 4;            // 4x4 grid
@@ -174,15 +174,18 @@ const SPRITE_SCALE = 48 / TILE_SIZE; // 1.5 → 48px final
 const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
 const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
 
-// Recorte de 1px en la parte superior de cada tile (para eliminar borde no deseado)
-const CROP_TOP = 1;
-const CROP_HEIGHT = TILE_SIZE - CROP_TOP; // 31px
+// Recorte para eliminar bordes no deseados (si es necesario)
+// Si el sprite tiene márgenes, ajusta estos valores. Ahora están a 0.
+const CROP_LEFT = 0;    // píxeles a recortar desde la izquierda
+const CROP_TOP = 0;     // píxeles a recortar desde arriba
+const CROP_WIDTH = TILE_SIZE - CROP_LEFT;   // ancho útil
+const CROP_HEIGHT = TILE_SIZE - CROP_TOP;   // alto útil
 
 let spriteSheet = new Image();
 let spriteLoaded = false;
 spriteSheet.onload = () => {
     spriteLoaded = true;
-    console.log("Sprite sheet cargado (128x128, tiles 32x32, recorte superior 1px)");
+    console.log("Sprite sheet cargado");
 };
 spriteSheet.src = SPRITE_URL;
 
@@ -194,11 +197,11 @@ const DIRECTION_TO_ROW = {
     right: 3
 };
 
-// Distancia en píxeles para cambiar de frame (ajustable)
-const DIST_PER_FRAME = 12;
+// Distancia en píxeles para cambiar de frame (ajústalo para mayor fluidez)
+const DIST_PER_FRAME = 8;  // antes 12 → ahora más fluido
 
 // Animación por jugador
-let playerAnim = {}; // { [id]: { frame, directionRow, moving, lastVisualX, lastVisualY, distanceAccum } }
+let playerAnim = {};
 
 // ========== FUNCIONES AUXILIARES ==========
 function getPlayerColor(id, isMe, serverColor) {
@@ -313,10 +316,9 @@ function interpolateAll() {
         const sp = serverPlayers[id];
         if (!players[id]) {
             players[id] = { ...sp };
-            // Inicializar animación
             playerAnim[id] = {
-                frame: 1,                      // frame quieto (índice 1)
-                directionRow: 0,               // abajo por defecto
+                frame: 1,
+                directionRow: 0,
                 moving: false,
                 lastVisualX: sp.x,
                 lastVisualY: sp.y,
@@ -350,22 +352,22 @@ function updateAnimations() {
         const anim = playerAnim[id];
         if (!anim) continue;
 
-        // Calcular desplazamiento visual desde la última posición guardada
+        // Desplazamiento visual desde la última posición guardada
         const deltaX = p.x - anim.lastVisualX;
         const deltaY = p.y - anim.lastVisualY;
         const distance = Math.hypot(deltaX, deltaY);
         
-        let moving = distance > 0.5; // umbral mínimo para considerar movimiento
+        let moving = distance > 0.5;
         let direction = moving ? getDirectionFromMovement(deltaX, deltaY) : null;
 
-        // Actualizar la última posición visual para la próxima iteración
+        // Actualizar última posición visual
         anim.lastVisualX = p.x;
         anim.lastVisualY = p.y;
 
         if (moving && direction) {
             const newRow = DIRECTION_TO_ROW[direction];
             if (anim.directionRow !== newRow) {
-                // Cambio de dirección: reiniciar frame al inicio (0) y acumulador
+                // Cambio de dirección: reiniciar frame al inicio y acumulador
                 anim.directionRow = newRow;
                 anim.frame = 0;
                 anim.distanceAccum = 0;
@@ -373,18 +375,17 @@ function updateAnimations() {
                 // Misma dirección: acumular distancia
                 anim.distanceAccum += distance;
                 if (anim.distanceAccum >= DIST_PER_FRAME) {
-                    // Avanzar al siguiente frame cíclicamente (0,1,2,3,0...)
+                    // Avanzar al siguiente frame (cíclico)
                     anim.frame = (anim.frame + 1) % 4;
                     anim.distanceAccum = 0;
                 }
             }
             anim.moving = true;
         } else {
-            // No se mueve: frame quieto (índice 1) y reiniciar acumulador
+            // Quieto: mostrar frame de reposo (índice 1)
             anim.frame = 1;
             anim.moving = false;
             anim.distanceAccum = 0;
-            // La dirección (directionRow) se mantiene, para que al detenerse conserve la última orientación
         }
     }
 }
@@ -448,9 +449,9 @@ function draw() {
         const frameCol = anim.frame;
         
         if (spriteLoaded) {
-            const srcX = frameCol * TILE_SIZE;
+            const srcX = frameCol * TILE_SIZE + CROP_LEFT;
             const srcY = row * TILE_SIZE + CROP_TOP;
-            const srcW = TILE_SIZE;
+            const srcW = CROP_WIDTH;
             const srcH = CROP_HEIGHT;
             const destX = p.x - SPRITE_W/2;
             const destY = p.y - SPRITE_H/2;
