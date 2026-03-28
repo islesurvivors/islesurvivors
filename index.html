@@ -376,7 +376,7 @@ canvas { display:block; cursor: crosshair; }
                     lastVisualX: sp.x,
                     lastVisualY: sp.y,
                     nextFrameTime: performance.now() / 1000 + animInterval,
-                    idleFrames: 0
+                    idleCounter: 0
                 };
             } else {
                 players[id].x += (sp.x - players[id].x) * 0.7;
@@ -407,76 +407,64 @@ canvas { display:block; cursor: crosshair; }
             const anim = playerAnim[id];
             if (!anim) continue;
 
-            let movingNow = false;
-            let direction = null;
-
-            if (id === myId) {
-                const deltaX = p.x - anim.lastVisualX;
-                const deltaY = p.y - anim.lastVisualY;
-                const distance = Math.hypot(deltaX, deltaY);
-                // Umbral para detectar movimiento real (muy pequeño)
-                movingNow = distance > 0.2;
-                // Umbral para cambios de dirección (más alto, evita parpadeos)
-                if (distance > 2.0) {
-                    direction = getDirectionFromMovement(deltaX, deltaY);
-                }
-                anim.lastVisualX = p.x;
-                anim.lastVisualY = p.y;
-            } else {
-                const deltaX = p.x - anim.lastVisualX;
-                const deltaY = p.y - anim.lastVisualY;
-                const distance = Math.hypot(deltaX, deltaY);
-                movingNow = distance > 0.5;
-                if (movingNow) {
-                    direction = getDirectionFromMovement(deltaX, deltaY);
-                }
-                anim.lastVisualX = p.x;
-                anim.lastVisualY = p.y;
-            }
-
-            // Gestión del estado de movimiento con persistencia
-            if (movingNow) {
-                // Hay movimiento ahora: asegurar que moving está activo y resetear contador de inactividad
+            // Calcular desplazamiento desde la última posición visual
+            const deltaX = p.x - anim.lastVisualX;
+            const deltaY = p.y - anim.lastVisualY;
+            const distance = Math.hypot(deltaX, deltaY);
+            
+            // Actualizar última posición visual
+            anim.lastVisualX = p.x;
+            anim.lastVisualY = p.y;
+            
+            // Umbrales: movimiento si > 0.5 px, cambio de dirección si > 2 px
+            const MOVEMENT_THRESHOLD = 0.5;
+            const DIRECTION_THRESHOLD = 2.0;
+            
+            const isMoving = distance > MOVEMENT_THRESHOLD;
+            
+            // Manejar estado de movimiento con persistencia (3 frames de inactividad para detenerse)
+            if (isMoving) {
+                anim.idleCounter = 0;
                 if (!anim.moving) {
+                    // Recién empieza a moverse: iniciar ciclo de frames
                     anim.moving = true;
-                    // Si recién se activa el movimiento, reiniciar el ciclo de frames desde 0
                     anim.frame = 0;
                     anim.nextFrameTime = now + animInterval;
                 }
-                anim.idleFrames = 0;
             } else {
-                // No hay movimiento en este frame: incrementar contador de inactividad
                 if (anim.moving) {
-                    anim.idleFrames = (anim.idleFrames || 0) + 1;
-                    // Si han pasado 3 frames sin movimiento, considerar que se detuvo realmente
-                    if (anim.idleFrames >= 3) {
+                    anim.idleCounter++;
+                    if (anim.idleCounter >= 3) {
                         anim.moving = false;
-                        anim.frame = 1;  // Frame idle
-                        // No modificamos nextFrameTime para que al reanudar el ciclo continúe
+                        anim.frame = 1; // frame idle
+                        // No reiniciamos nextFrameTime para que al retomar el ciclo continúe
                     }
                 }
             }
-
-            // Actualizar dirección solo si hay suficiente desplazamiento
-            if (direction) {
-                const newRow = DIRECTION_TO_ROW[direction];
-                if (anim.directionRow !== newRow) {
-                    anim.directionRow = newRow;
-                    if (anim.moving) {
-                        anim.frame = 0;
-                        anim.nextFrameTime = now + animInterval;
+            
+            // Actualizar dirección si el desplazamiento supera el umbral de dirección
+            if (distance > DIRECTION_THRESHOLD) {
+                const direction = getDirectionFromMovement(deltaX, deltaY);
+                if (direction) {
+                    const newRow = DIRECTION_TO_ROW[direction];
+                    if (anim.directionRow !== newRow) {
+                        anim.directionRow = newRow;
+                        if (anim.moving) {
+                            // Cambio de dirección: reiniciar ciclo desde frame 0
+                            anim.frame = 0;
+                            anim.nextFrameTime = now + animInterval;
+                        }
                     }
                 }
             }
-
-            // Control del ciclo de frames mientras el personaje está en movimiento
-            if (anim.moving) {
-                if (now >= anim.nextFrameTime) {
-                    anim.frame = (anim.frame + 1) % 4;
-                    anim.nextFrameTime = now + animInterval;
-                }
+            
+            // Avanzar frames si está en movimiento y ha pasado el tiempo
+            if (anim.moving && now >= anim.nextFrameTime) {
+                anim.frame = (anim.frame + 1) % 4;
+                anim.nextFrameTime = now + animInterval;
             }
-
+            
+            // Actualizar debug para el jugador local
             if (id === myId) {
                 if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
                 if (timeToNextSpan) {
