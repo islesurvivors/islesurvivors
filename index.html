@@ -243,10 +243,10 @@ canvas { display:block; cursor: crosshair; }
 
     let animInterval = 0.25; // segundos por frame
 
-    // Elementos del DOM (después de que el DOM esté listo)
+    // Elementos del DOM (con comprobación)
     const slider = document.getElementById('animSpeedSlider');
     const speedValue = document.getElementById('animSpeedValue');
-    if (slider) {
+    if (slider && speedValue) {
         slider.addEventListener('input', (e) => {
             animInterval = parseFloat(e.target.value);
             speedValue.innerText = animInterval.toFixed(2) + ' s';
@@ -295,11 +295,14 @@ canvas { display:block; cursor: crosshair; }
             if (myId && serverPlayers[myId]) {
                 localPlayerHealth = serverPlayers[myId].health;
                 const percent = Math.max(0, (localPlayerHealth / 100) * 100);
-                document.getElementById('healthBar').style.width = percent + '%';
-                document.getElementById('healthText').innerText = `${Math.floor(localPlayerHealth)} HP`;
+                const healthBar = document.getElementById('healthBar');
+                const healthText = document.getElementById('healthText');
+                if (healthBar) healthBar.style.width = percent + '%';
+                if (healthText) healthText.innerText = `${Math.floor(localPlayerHealth)} HP`;
                 lastAttackTime = serverPlayers[myId].lastAttackTime;
             }
-            document.getElementById('aliveCount').innerText = aliveCount;
+            const aliveCountSpan = document.getElementById('aliveCount');
+            if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
             
             if (data.timestamp) {
                 let rawPing = Date.now() - data.timestamp;
@@ -307,7 +310,8 @@ canvas { display:block; cursor: crosshair; }
                 pingHistory.push(rawPing);
                 if (pingHistory.length > PING_HISTORY_LEN) pingHistory.shift();
                 const avgPing = Math.round(pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length);
-                document.getElementById('pingValue').innerText = avgPing;
+                const pingSpan = document.getElementById('pingValue');
+                if (pingSpan) pingSpan.innerText = avgPing;
             }
         }
         else if (data.type === 'damage') {
@@ -411,17 +415,29 @@ canvas { display:block; cursor: crosshair; }
             const anim = playerAnim[id];
             if (!anim) continue;
 
-            // Usamos desplazamiento visual para todos los jugadores (incluido el local)
-            const deltaX = p.x - anim.lastVisualX;
-            const deltaY = p.y - anim.lastVisualY;
-            const distance = Math.hypot(deltaX, deltaY);
-            
-            let moving = distance > 0.5;
-            let direction = moving ? getDirectionFromMovement(deltaX, deltaY) : null;
+            let moving = false;
+            let direction = null;
 
-            // Guardar última posición visual para la próxima iteración
-            anim.lastVisualX = p.x;
-            anim.lastVisualY = p.y;
+            if (id === myId) {
+                // Jugador local: usa input (teclas) para movimiento estable
+                moving = (input.dx !== 0 || input.dy !== 0);
+                if (moving) {
+                    direction = getDirectionFromMovement(input.dx, input.dy);
+                }
+                // No actualizamos lastVisualX/Y porque no lo usamos para dirección
+            } else {
+                // Jugadores remotos: usamos desplazamiento visual
+                const deltaX = p.x - anim.lastVisualX;
+                const deltaY = p.y - anim.lastVisualY;
+                const distance = Math.hypot(deltaX, deltaY);
+                moving = distance > 0.5;
+                if (moving) {
+                    direction = getDirectionFromMovement(deltaX, deltaY);
+                }
+                // Guardar última posición visual para la próxima iteración
+                anim.lastVisualX = p.x;
+                anim.lastVisualY = p.y;
+            }
 
             if (moving && direction) {
                 const newRow = DIRECTION_TO_ROW[direction];
@@ -430,7 +446,7 @@ canvas { display:block; cursor: crosshair; }
                     anim.directionRow = newRow;
                     anim.frame = 0;
                     anim.nextFrameTime = now + animInterval;
-                    if (id === myId) console.log(`Dirección visual cambió a ${direction}, frame=0`);
+                    if (id === myId) console.log(`Dirección cambió a ${direction}, frame=0`);
                 } else {
                     // Misma dirección: si es hora de cambiar frame
                     if (now >= anim.nextFrameTime) {
