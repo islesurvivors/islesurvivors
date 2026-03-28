@@ -606,14 +606,19 @@ canvas { display:block; cursor: crosshair; }
                 }
             }
             
-            ctx.globalAlpha = 0.4;
+            ctx.save();
+            ctx.globalAlpha = 0.35;
             ctx.fillStyle = "#ff0000";
-            const hitboxTopY = p.y;
-            const hitboxBottomY = p.y + SPRITE_H/2;
-            const hitboxLeftX = p.x - SPRITE_W/2;
-            const hitboxRightX = p.x + SPRITE_W/2;
-            ctx.fillRect(hitboxLeftX, hitboxTopY, SPRITE_W, SPRITE_H/2);
-            ctx.globalAlpha = 1.0;
+            const hitboxLeft = p.x - SPRITE_W/2;
+            const hitboxTop = p.y;
+            const hitboxWidth = SPRITE_W;
+            const hitboxHeight = SPRITE_H/2;
+            ctx.fillRect(hitboxLeft, hitboxTop, hitboxWidth, hitboxHeight);
+            ctx.strokeStyle = "#ff6666";
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = 0.8;
+            ctx.strokeRect(hitboxLeft, hitboxTop, hitboxWidth, hitboxHeight);
+            ctx.restore();
         }
         ctx.restore();
         
