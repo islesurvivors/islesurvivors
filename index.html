@@ -419,27 +419,18 @@ canvas { display:block; cursor: crosshair; }
             let direction = null;
 
             if (id === myId) {
-                // Jugador local: movimiento determinado por input (estable)
+                // Jugador local: la dirección se basa en el INPUT (más estable)
                 moving = (input.dx !== 0 || input.dy !== 0);
                 
                 if (moving) {
-                    // Dirección basada en el desplazamiento visual real (delta desde última posición)
-                    const deltaX = p.x - anim.lastVisualX;
-                    const deltaY = p.y - anim.lastVisualY;
-                    const distance = Math.hypot(deltaX, deltaY);
-                    if (distance > 0.5) {
-                        direction = getDirectionFromMovement(deltaX, deltaY);
-                    }
-                    // Si no hay suficiente desplazamiento (justo al empezar), usamos la dirección de input temporalmente
-                    if (!direction) {
-                        direction = getDirectionFromMovement(input.dx, input.dy);
-                    }
-                    // Actualizar la última posición visual para la próxima iteración
-                    anim.lastVisualX = p.x;
-                    anim.lastVisualY = p.y;
+                    // Dirección según input
+                    direction = getDirectionFromMovement(input.dx, input.dy);
+                } else {
+                    // Quieto: mantenemos la última dirección (anim.directionRow)
+                    direction = null;
                 }
             } else {
-                // Jugadores remotos: usamos desplazamiento visual para todo
+                // Jugadores remotos: usamos desplazamiento visual
                 const deltaX = p.x - anim.lastVisualX;
                 const deltaY = p.y - anim.lastVisualY;
                 const distance = Math.hypot(deltaX, deltaY);
@@ -451,25 +442,24 @@ canvas { display:block; cursor: crosshair; }
                 anim.lastVisualY = p.y;
             }
 
+            // Manejo de dirección y frames
             if (moving && direction) {
                 const newRow = DIRECTION_TO_ROW[direction];
                 if (anim.directionRow !== newRow) {
-                    // Cambio de dirección: reiniciar frame a 0, reprogramar próximo cambio
+                    // Cambio de dirección: reiniciar frame a 0 y programar próximo cambio
                     anim.directionRow = newRow;
                     anim.frame = 0;
                     anim.nextFrameTime = now + animInterval;
-                    if (id === myId) console.log(`Dirección visual cambió a ${direction}, frame=0`);
                 } else {
-                    // Misma dirección: si es hora de cambiar frame
+                    // Misma dirección: avanzar frame si es hora
                     if (now >= anim.nextFrameTime) {
                         anim.frame = (anim.frame + 1) % 4;
                         anim.nextFrameTime = now + animInterval;
-                        if (id === myId) console.log(`Frame cambiado a ${anim.frame}`);
                     }
                 }
                 anim.moving = true;
             } else {
-                // Quieto: mostrar frame 1 (quieto) pero no tocar el temporizador
+                // Quieto: mostrar frame 1 (quieto) pero conservar la dirección
                 anim.frame = 1;
                 anim.moving = false;
                 // No modificamos nextFrameTime para que al retomar el movimiento el ciclo continúe correctamente
