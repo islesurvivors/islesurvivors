@@ -605,6 +605,19 @@ canvas { display:block; cursor: crosshair; }
                     ctx.stroke();
                 }
             }
+            
+            ctx.save();
+            ctx.globalAlpha = 0.4;
+            ctx.fillStyle = "#ff3333";
+            const hitboxHeight = SPRITE_H / 4;
+            const hitboxLeft = p.x - SPRITE_W/2;
+            const hitboxTop = p.y + SPRITE_H/2 - hitboxHeight;
+            ctx.fillRect(hitboxLeft, hitboxTop, SPRITE_W, hitboxHeight);
+            ctx.strokeStyle = "#ff8888";
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.7;
+            ctx.strokeRect(hitboxLeft, hitboxTop, SPRITE_W, hitboxHeight);
+            ctx.restore();
         }
         ctx.restore();
         
