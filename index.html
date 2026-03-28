@@ -419,14 +419,27 @@ canvas { display:block; cursor: crosshair; }
             let direction = null;
 
             if (id === myId) {
-                // Jugador local: usa input (teclas) para movimiento estable
+                // Jugador local: movimiento determinado por input (estable)
                 moving = (input.dx !== 0 || input.dy !== 0);
+                
                 if (moving) {
-                    direction = getDirectionFromMovement(input.dx, input.dy);
+                    // Dirección basada en el desplazamiento visual real (delta desde última posición)
+                    const deltaX = p.x - anim.lastVisualX;
+                    const deltaY = p.y - anim.lastVisualY;
+                    const distance = Math.hypot(deltaX, deltaY);
+                    if (distance > 0.5) {
+                        direction = getDirectionFromMovement(deltaX, deltaY);
+                    }
+                    // Si no hay suficiente desplazamiento (justo al empezar), usamos la dirección de input temporalmente
+                    if (!direction) {
+                        direction = getDirectionFromMovement(input.dx, input.dy);
+                    }
+                    // Actualizar la última posición visual para la próxima iteración
+                    anim.lastVisualX = p.x;
+                    anim.lastVisualY = p.y;
                 }
-                // No actualizamos lastVisualX/Y porque no lo usamos para dirección
             } else {
-                // Jugadores remotos: usamos desplazamiento visual
+                // Jugadores remotos: usamos desplazamiento visual para todo
                 const deltaX = p.x - anim.lastVisualX;
                 const deltaY = p.y - anim.lastVisualY;
                 const distance = Math.hypot(deltaX, deltaY);
@@ -434,7 +447,6 @@ canvas { display:block; cursor: crosshair; }
                 if (moving) {
                     direction = getDirectionFromMovement(deltaX, deltaY);
                 }
-                // Guardar última posición visual para la próxima iteración
                 anim.lastVisualX = p.x;
                 anim.lastVisualY = p.y;
             }
@@ -446,7 +458,7 @@ canvas { display:block; cursor: crosshair; }
                     anim.directionRow = newRow;
                     anim.frame = 0;
                     anim.nextFrameTime = now + animInterval;
-                    if (id === myId) console.log(`Dirección cambió a ${direction}, frame=0`);
+                    if (id === myId) console.log(`Dirección visual cambió a ${direction}, frame=0`);
                 } else {
                     // Misma dirección: si es hora de cambiar frame
                     if (now >= anim.nextFrameTime) {
