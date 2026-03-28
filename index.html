@@ -3,7 +3,6 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-/* (Mismo CSS que antes, sin cambios) */
 body { margin:0; overflow:hidden; background:#111; font-family: 'Segoe UI', Arial, sans-serif; }
 canvas { display:block; cursor: crosshair; }
 
@@ -385,8 +384,7 @@ canvas { display:block; cursor: crosshair; }
                     moving: false,
                     lastVisualX: sp.x,
                     lastVisualY: sp.y,
-                    nextFrameTime: performance.now() / 1000 + animInterval,
-                    pendingDir: null   // dirección pendiente (para el jugador local)
+                    nextFrameTime: performance.now() / 1000 + animInterval
                 };
             } else {
                 players[id].x += (sp.x - players[id].x) * 0.7;
@@ -421,94 +419,27 @@ canvas { display:block; cursor: crosshair; }
             let direction = null;
 
             if (id === myId) {
-                // Jugador local: movimiento determinado por input
+                // Jugador local: movimiento determinado por input (estable)
                 moving = (input.dx !== 0 || input.dy !== 0);
                 
-                // Obtener la dirección deseada por las teclas
-                let desiredDir = moving ? getDirectionFromMovement(input.dx, input.dy) : null;
-                
-                // Obtener la dirección visual real (desplazamiento en pantalla)
-                const deltaX = p.x - anim.lastVisualX;
-                const deltaY = p.y - anim.lastVisualY;
-                const distance = Math.hypot(deltaX, deltaY);
-                let visualDir = null;
-                if (distance > 0.5) {
-                    visualDir = getDirectionFromMovement(deltaX, deltaY);
-                }
-                
-                // Actualizar la última posición visual para la próxima iteración
-                anim.lastVisualX = p.x;
-                anim.lastVisualY = p.y;
-
                 if (moving) {
-                    // Si hay una dirección pendiente, la mantenemos
-                    if (anim.pendingDir !== null) {
-                        // Esperamos a que la dirección visual coincida con la pendiente
-                        if (visualDir === anim.pendingDir) {
-                            // Coinciden: aplicamos el cambio de dirección
-                            if (anim.directionRow !== DIRECTION_TO_ROW[visualDir]) {
-                                anim.directionRow = DIRECTION_TO_ROW[visualDir];
-                                anim.frame = 0;
-                                anim.nextFrameTime = now + animInterval;
-                                if (id === myId) console.log(`Dirección visual cambió a ${visualDir}, frame=0`);
-                            }
-                            anim.pendingDir = null; // ya no está pendiente
-                            direction = visualDir;
-                        } else {
-                            // Sigue pendiente: no cambiamos dirección, congelamos el frame
-                            // direction = null para que no avance el temporizador
-                            direction = null;
-                        }
-                    } else {
-                        // No hay pendiente: la dirección visual es la que mande
-                        direction = visualDir;
-                        // Si la dirección visual es nula (apenas empezando), usamos la deseada temporalmente
-                        if (!direction && desiredDir) {
-                            direction = desiredDir;
-                        }
+                    // Dirección basada en el desplazamiento visual real (delta desde última posición)
+                    const deltaX = p.x - anim.lastVisualX;
+                    const deltaY = p.y - anim.lastVisualY;
+                    const distance = Math.hypot(deltaX, deltaY);
+                    if (distance > 0.5) {
+                        direction = getDirectionFromMovement(deltaX, deltaY);
                     }
-
-                    // Si hay una dirección activa (visual o deseada) y es diferente a la actual, y no hay pendiente,
-                    // detectamos cambio de dirección para iniciar pendiente
-                    if (direction && desiredDir && direction !== desiredDir && anim.pendingDir === null) {
-                        // La dirección visual no coincide con la deseada => iniciamos pendiente
-                        anim.pendingDir = desiredDir;
-                        // No cambiamos la dirección visual todavía, y congelamos el frame
-                        direction = null; // no avanzar animación mientras está pendiente
+                    // Si no hay suficiente desplazamiento (justo al empezar), usamos la dirección de input temporalmente
+                    if (!direction) {
+                        direction = getDirectionFromMovement(input.dx, input.dy);
                     }
-
-                    // Si hay dirección activa (coincidente o sin pendiente), procesamos la animación
-                    if (direction) {
-                        const newRow = DIRECTION_TO_ROW[direction];
-                        if (anim.directionRow !== newRow) {
-                            // Cambio de dirección: reiniciar frame a 0, reprogramar próximo cambio
-                            anim.directionRow = newRow;
-                            anim.frame = 0;
-                            anim.nextFrameTime = now + animInterval;
-                            if (id === myId) console.log(`Dirección visual cambió a ${direction}, frame=0`);
-                        } else {
-                            // Misma dirección: si es hora de cambiar frame
-                            if (now >= anim.nextFrameTime) {
-                                anim.frame = (anim.frame + 1) % 4;
-                                anim.nextFrameTime = now + animInterval;
-                                if (id === myId) console.log(`Frame cambiado a ${anim.frame}`);
-                            }
-                        }
-                        anim.moving = true;
-                    } else {
-                        // No hay dirección activa (pendiente): congelar frame
-                        // no avanzamos el temporizador
-                        anim.moving = true; // seguimos considerando que nos movemos (para no poner frame quieto)
-                    }
-                } else {
-                    // No se mueve: quieto
-                    anim.frame = 1;
-                    anim.moving = false;
-                    anim.pendingDir = null; // cancelamos cualquier pendiente
-                    // No modificamos nextFrameTime
+                    // Actualizar la última posición visual para la próxima iteración
+                    anim.lastVisualX = p.x;
+                    anim.lastVisualY = p.y;
                 }
             } else {
-                // Jugadores remotos: usamos desplazamiento visual para todo (sin cambios)
+                // Jugadores remotos: usamos desplazamiento visual para todo
                 const deltaX = p.x - anim.lastVisualX;
                 const deltaY = p.y - anim.lastVisualY;
                 const distance = Math.hypot(deltaX, deltaY);
@@ -518,25 +449,30 @@ canvas { display:block; cursor: crosshair; }
                 }
                 anim.lastVisualX = p.x;
                 anim.lastVisualY = p.y;
+            }
 
-                if (moving && direction) {
-                    const newRow = DIRECTION_TO_ROW[direction];
-                    if (anim.directionRow !== newRow) {
-                        anim.directionRow = newRow;
-                        anim.frame = 0;
-                        anim.nextFrameTime = now + animInterval;
-                        if (id === myId) console.log(`Dirección visual cambió a ${direction}, frame=0`);
-                    } else {
-                        if (now >= anim.nextFrameTime) {
-                            anim.frame = (anim.frame + 1) % 4;
-                            anim.nextFrameTime = now + animInterval;
-                        }
-                    }
-                    anim.moving = true;
+            if (moving && direction) {
+                const newRow = DIRECTION_TO_ROW[direction];
+                if (anim.directionRow !== newRow) {
+                    // Cambio de dirección: reiniciar frame a 0, reprogramar próximo cambio
+                    anim.directionRow = newRow;
+                    anim.frame = 0;
+                    anim.nextFrameTime = now + animInterval;
+                    if (id === myId) console.log(`Dirección visual cambió a ${direction}, frame=0`);
                 } else {
-                    anim.frame = 1;
-                    anim.moving = false;
+                    // Misma dirección: si es hora de cambiar frame
+                    if (now >= anim.nextFrameTime) {
+                        anim.frame = (anim.frame + 1) % 4;
+                        anim.nextFrameTime = now + animInterval;
+                        if (id === myId) console.log(`Frame cambiado a ${anim.frame}`);
+                    }
                 }
+                anim.moving = true;
+            } else {
+                // Quieto: mostrar frame 1 (quieto) pero no tocar el temporizador
+                anim.frame = 1;
+                anim.moving = false;
+                // No modificamos nextFrameTime para que al retomar el movimiento el ciclo continúe correctamente
             }
 
             // Actualizar debug para jugador local
