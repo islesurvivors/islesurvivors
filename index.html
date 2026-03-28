@@ -164,35 +164,29 @@ let deathTime = null;
 let pingHistory = [];
 const PING_HISTORY_LEN = 5;
 
-// ========== CONFIGURACIÓN DEL SPRITE (CORREGIDO) ==========
+// ========== CONFIGURACIÓN DEL SPRITE ==========
 const SPRITE_URL = "ch003.png";
-const TOTAL_IMAGE_SIZE = 128;      // la imagen completa mide 128x128 píxeles
+const TOTAL_IMAGE_SIZE = 128;      // imagen completa 128x128
 const TILES_PER_ROW = 4;            // 4x4 grid
-const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW; // 32 píxeles por tile
+const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW; // 32px por tile
 
-// Escala de dibujo: 48x48 píxeles finales
-const SPRITE_SCALE = 48 / TILE_SIZE; // 1.5
+const SPRITE_SCALE = 48 / TILE_SIZE; // 1.5 → 48px final
 const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
 const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
 
-// Recorte para eliminar el borde superior no deseado (1 píxel)
-const CROP_TOP = 1;                 // píxeles a recortar desde arriba
-const CROP_HEIGHT = TILE_SIZE - CROP_TOP; // 31 píxeles de alto útil
+// Recorte de 1px en la parte superior de cada tile (para eliminar borde no deseado)
+const CROP_TOP = 1;
+const CROP_HEIGHT = TILE_SIZE - CROP_TOP; // 31px
 
 let spriteSheet = new Image();
 let spriteLoaded = false;
 spriteSheet.onload = () => {
     spriteLoaded = true;
-    console.log("Sprite sheet cargado correctamente (128x128, tiles 32x32, recorte superior de 1px)");
+    console.log("Sprite sheet cargado (128x128, tiles 32x32, recorte superior 1px)");
 };
 spriteSheet.src = SPRITE_URL;
 
-// Mapeo de dirección a fila en el sprite sheet
-// Según el usuario:
-// - Fila 0: abajo (S)
-// - Fila 1: arriba (W)
-// - Fila 2: izquierda (A)
-// - Fila 3: derecha (D)
+// Mapeo dirección → fila (0:abajo, 1:arriba, 2:izquierda, 3:derecha)
 const DIRECTION_TO_ROW = {
     down: 0,
     up: 1,
@@ -200,8 +194,11 @@ const DIRECTION_TO_ROW = {
     right: 3
 };
 
+// Distancia en píxeles para cambiar de frame (ajustable)
+const DIST_PER_FRAME = 12;
+
 // Animación por jugador
-let playerAnim = {}; // { [id]: { frame, lastChange, directionRow, moving, lastX, lastY } }
+let playerAnim = {}; // { [id]: { frame, directionRow, moving, lastVisualX, lastVisualY, distanceAccum } }
 
 // ========== FUNCIONES AUXILIARES ==========
 function getPlayerColor(id, isMe, serverColor) {
@@ -318,12 +315,12 @@ function interpolateAll() {
             players[id] = { ...sp };
             // Inicializar animación
             playerAnim[id] = {
-                frame: 1,               // frame quieto por defecto (índice 1)
-                lastChange: performance.now() / 1000,
-                directionRow: 0,        // por defecto abajo (fila 0)
+                frame: 1,                      // frame quieto
+                directionRow: 0,               // abajo por defecto
                 moving: false,
-                lastX: sp.x,
-                lastY: sp.y
+                lastVisualX: sp.x,
+                lastVisualY: sp.y,
+                distanceAccum: 0
             };
         } else {
             players[id].x += (sp.x - players[id].x) * 0.7;
@@ -336,21 +333,16 @@ function interpolateAll() {
     }
 }
 
-// Determina la dirección basada en el movimiento (dx, dy)
 function getDirectionFromMovement(dx, dy) {
     if (Math.abs(dx) > Math.abs(dy)) {
         return dx > 0 ? 'right' : 'left';
     } else if (Math.abs(dy) > 0) {
         return dy > 0 ? 'down' : 'up';
     }
-    return null; // sin movimiento
+    return null;
 }
 
-// Actualiza la animación de todos los jugadores
 function updateAnimations() {
-    const now = performance.now() / 1000;
-    const ANIM_INTERVAL = 0.25; // segundos entre cambios de frame (más pausado)
-
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
@@ -359,36 +351,36 @@ function updateAnimations() {
         let direction = null;
         let dx = 0, dy = 0;
 
+        // Determinamos movimiento y dirección
         if (id === myId) {
-            // Jugador local: usa input
             dx = input.dx;
             dy = input.dy;
             direction = getDirectionFromMovement(dx, dy);
             moving = (dx !== 0 || dy !== 0);
         } else {
-            // Jugador remoto: calcula dirección a partir del cambio de posición
+            // Jugadores remotos: usamos el cambio visual
             const anim = playerAnim[id];
             if (anim) {
-                const deltaX = p.x - anim.lastX;
-                const deltaY = p.y - anim.lastY;
+                const deltaX = p.x - anim.lastVisualX;
+                const deltaY = p.y - anim.lastVisualY;
                 const speed = Math.hypot(deltaX, deltaY);
-                if (speed > 1) {
+                if (speed > 0.5) {
                     moving = true;
                     direction = getDirectionFromMovement(deltaX, deltaY);
                 } else {
                     moving = false;
                 }
-                // Actualizar última posición para la próxima iteración
-                anim.lastX = p.x;
-                anim.lastY = p.y;
+                // Guardar posición visual para la próxima iteración
+                anim.lastVisualX = p.x;
+                anim.lastVisualY = p.y;
             } else {
                 playerAnim[id] = {
                     frame: 1,
-                    lastChange: now,
                     directionRow: 0,
                     moving: false,
-                    lastX: p.x,
-                    lastY: p.y
+                    lastVisualX: p.x,
+                    lastVisualY: p.y,
+                    distanceAccum: 0
                 };
                 continue;
             }
@@ -397,30 +389,44 @@ function updateAnimations() {
         const anim = playerAnim[id];
         if (!anim) continue;
 
-        // Si está moviéndose
+        // Calcular distancia recorrida desde el último cambio de frame
+        let distance = 0;
+        if (anim.lastVisualX !== undefined && (id !== myId || moving)) {
+            const dxVis = p.x - anim.lastVisualX;
+            const dyVis = p.y - anim.lastVisualY;
+            distance = Math.hypot(dxVis, dyVis);
+        }
+        // Actualizar posición visual para la próxima iteración (si es remoto ya se hizo)
+        if (id === myId) {
+            anim.lastVisualX = p.x;
+            anim.lastVisualY = p.y;
+        }
+
         if (moving && direction) {
+            anim.moving = true;
             const newRow = DIRECTION_TO_ROW[direction];
-            // Cambiar de fila si la dirección cambió
             if (anim.directionRow !== newRow) {
+                // Cambio de dirección: nuevo frame aleatorio, reiniciar acumulador
                 anim.directionRow = newRow;
-                anim.frame = Math.floor(Math.random() * 4); // frame aleatorio al cambiar dirección
-                anim.lastChange = now;
+                anim.frame = Math.floor(Math.random() * 4);
+                anim.distanceAccum = 0;
             } else {
-                // Si ha pasado el intervalo, cambiar a un frame aleatorio (0-3)
-                if (now - anim.lastChange >= ANIM_INTERVAL) {
+                // Misma dirección: acumular distancia
+                anim.distanceAccum += distance;
+                if (anim.distanceAccum >= DIST_PER_FRAME) {
                     let newFrame;
                     do {
                         newFrame = Math.floor(Math.random() * 4);
-                    } while (newFrame === anim.frame && Math.random() < 0.7); // evita repetir consecutivo
+                    } while (newFrame === anim.frame && Math.random() < 0.7);
                     anim.frame = newFrame;
-                    anim.lastChange = now;
+                    anim.distanceAccum = 0;
                 }
             }
-            anim.moving = true;
         } else {
-            // No se mueve: mostrar frame quieto (índice 1)
+            // No se mueve: frame quieto y reiniciar acumulador
             anim.frame = 1;
             anim.moving = false;
+            anim.distanceAccum = 0;
         }
     }
 }
@@ -483,18 +489,14 @@ function draw() {
         const row = anim.directionRow;
         const frameCol = anim.frame;
         
-        // Dibujar sprite si está cargado, si no, un círculo de respaldo
         if (spriteLoaded) {
-            // Recortar el tile eliminando el borde superior de 1px
             const srcX = frameCol * TILE_SIZE;
-            const srcY = row * TILE_SIZE + CROP_TOP;  // desplazar 1px hacia abajo
+            const srcY = row * TILE_SIZE + CROP_TOP;
             const srcW = TILE_SIZE;
-            const srcH = CROP_HEIGHT;                 // 31px de alto
+            const srcH = CROP_HEIGHT;
             const destX = p.x - SPRITE_W/2;
             const destY = p.y - SPRITE_H/2;
-            const destW = SPRITE_W;
-            const destH = SPRITE_H;                   // altura final sin cambios
-            ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
+            ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, SPRITE_W, SPRITE_H);
         } else {
             // Fallback: círculo
             ctx.beginPath();
