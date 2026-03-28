@@ -245,8 +245,7 @@ const DIRECTION_TO_ROW = {
 };
 
 // Animación por tiempo (intervalo ajustable)
-let animInterval = 0.25; // segundos por frame (por defecto 0.25s)
-let lastFrameChangeTime = performance.now() / 1000;
+let animInterval = 0.25; // segundos por frame
 
 // Control deslizante
 const slider = document.getElementById('animSpeedSlider');
@@ -257,7 +256,7 @@ slider.addEventListener('input', (e) => {
 });
 
 // Animación por jugador
-let playerAnim = {}; // { [id]: { frame, directionRow, moving, lastVisualX, lastVisualY, lastFrameTime } }
+let playerAnim = {}; // { [id]: { frame, directionRow, moving, lastVisualX, lastVisualY, nextFrameTime } }
 
 // Elementos del debug
 const currentFrameSpan = document.getElementById('currentFrame');
@@ -377,12 +376,12 @@ function interpolateAll() {
         if (!players[id]) {
             players[id] = { ...sp };
             playerAnim[id] = {
-                frame: 1,                // frame quieto (índice 1)
+                frame: 1,                      // frame quieto
                 directionRow: 0,
                 moving: false,
                 lastVisualX: sp.x,
                 lastVisualY: sp.y,
-                lastFrameTime: performance.now() / 1000
+                nextFrameTime: performance.now() / 1000 + animInterval
             };
         } else {
             players[id].x += (sp.x - players[id].x) * 0.7;
@@ -413,7 +412,7 @@ function updateAnimations() {
         const anim = playerAnim[id];
         if (!anim) continue;
 
-        // Calcular desplazamiento visual desde la última posición guardada
+        // Desplazamiento visual desde la última posición guardada
         const deltaX = p.x - anim.lastVisualX;
         const deltaY = p.y - anim.lastVisualY;
         const distance = Math.hypot(deltaX, deltaY);
@@ -428,29 +427,33 @@ function updateAnimations() {
         if (moving && direction) {
             const newRow = DIRECTION_TO_ROW[direction];
             if (anim.directionRow !== newRow) {
-                // Cambio de dirección: reiniciar frame al inicio (0) y temporizador
+                // Cambio de dirección: reiniciar frame a 0, reprogramar próximo cambio
                 anim.directionRow = newRow;
                 anim.frame = 0;
-                anim.lastFrameTime = now;
+                anim.nextFrameTime = now + animInterval;
+                // (opcional) log para debug
+                if (id === myId) console.log(`Cambio dirección a ${direction}, frame=0`);
             } else {
-                // Misma dirección: actualizar frame cada 'animInterval' segundos
-                if (now - anim.lastFrameTime >= animInterval) {
-                    anim.frame = (anim.frame + 1) % 4;  // ciclo 0,1,2,3
-                    anim.lastFrameTime = now;
+                // Misma dirección: si es hora de cambiar frame
+                if (now >= anim.nextFrameTime) {
+                    anim.frame = (anim.frame + 1) % 4;
+                    anim.nextFrameTime = now + animInterval;
+                    if (id === myId) console.log(`Frame cambiado a ${anim.frame}`);
                 }
             }
             anim.moving = true;
         } else {
-            // Quieto: mostrar frame quieto (índice 1)
+            // Quieto: mostrar frame quieto (1) y no avanzar el temporizador
             anim.frame = 1;
             anim.moving = false;
-            // No reseteamos el temporizador para que al retomar el movimiento la animación continúe desde donde estaba
+            // Reseteamos el próximo cambio para cuando vuelva a moverse, el frame 0 dure su intervalo
+            anim.nextFrameTime = now + animInterval;
         }
 
-        // Actualizar el debug SOLO para el jugador local
+        // Actualizar debug para jugador local
         if (id === myId) {
             currentFrameSpan.innerText = anim.frame;
-            const timeLeft = Math.max(0, animInterval - (now - anim.lastFrameTime));
+            const timeLeft = Math.max(0, anim.nextFrameTime - now);
             timeToNextSpan.innerText = timeLeft.toFixed(2);
         }
     }
