@@ -414,14 +414,11 @@ canvas { display:block; cursor: crosshair; }
                 const deltaX = p.x - anim.lastVisualX;
                 const deltaY = p.y - anim.lastVisualY;
                 const distance = Math.hypot(deltaX, deltaY);
-                // Consideramos que se está moviendo si hay input activo O desplazamiento visual > 0.2
-                movingNow = (input.dx !== 0 || input.dy !== 0) || (distance > 0.2);
-                
-                // Dirección: priorizamos desplazamiento visual si es suficiente (>2), sino usamos input
+                // Umbral para detectar movimiento real (muy pequeño)
+                movingNow = distance > 0.2;
+                // Umbral para cambios de dirección (más alto, evita parpadeos)
                 if (distance > 2.0) {
                     direction = getDirectionFromMovement(deltaX, deltaY);
-                } else if (input.dx !== 0 || input.dy !== 0) {
-                    direction = getDirectionFromMovement(input.dx, input.dy);
                 }
                 anim.lastVisualX = p.x;
                 anim.lastVisualY = p.y;
@@ -439,24 +436,28 @@ canvas { display:block; cursor: crosshair; }
 
             // Gestión del estado de movimiento con persistencia
             if (movingNow) {
+                // Hay movimiento ahora: asegurar que moving está activo y resetear contador de inactividad
                 if (!anim.moving) {
                     anim.moving = true;
-                    // Reiniciar ciclo de frames al empezar a moverse
+                    // Si recién se activa el movimiento, reiniciar el ciclo de frames desde 0
                     anim.frame = 0;
                     anim.nextFrameTime = now + animInterval;
                 }
                 anim.idleFrames = 0;
             } else {
+                // No hay movimiento en este frame: incrementar contador de inactividad
                 if (anim.moving) {
                     anim.idleFrames = (anim.idleFrames || 0) + 1;
+                    // Si han pasado 3 frames sin movimiento, considerar que se detuvo realmente
                     if (anim.idleFrames >= 3) {
                         anim.moving = false;
                         anim.frame = 1;  // Frame idle
+                        // No modificamos nextFrameTime para que al reanudar el ciclo continúe
                     }
                 }
             }
 
-            // Actualizar dirección
+            // Actualizar dirección solo si hay suficiente desplazamiento
             if (direction) {
                 const newRow = DIRECTION_TO_ROW[direction];
                 if (anim.directionRow !== newRow) {
@@ -468,7 +469,7 @@ canvas { display:block; cursor: crosshair; }
                 }
             }
 
-            // Avanzar frames si está en movimiento
+            // Control del ciclo de frames mientras el personaje está en movimiento
             if (anim.moving) {
                 if (now >= anim.nextFrameTime) {
                     anim.frame = (anim.frame + 1) % 4;
