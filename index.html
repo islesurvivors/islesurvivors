@@ -3,36 +3,195 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-/* same styles as before, unchanged */
 body { margin:0; overflow:hidden; background:#111; font-family: 'Segoe UI', Arial, sans-serif; }
 canvas { display:block; cursor: crosshair; }
 
-#ui { position: fixed; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 8px; font-size: 14px; pointer-events: none; z-index: 10; }
-#ping { position: fixed; top: 10px; right: 10px; color: white; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 8px; font-size: 12px; pointer-events: none; z-index: 10; }
-#health { position: fixed; bottom: 20px; left: 20px; width: 200px; height: 20px; background: rgba(0,0,0,0.7); border-radius: 10px; overflow: hidden; border: 1px solid #fff; z-index: 10; }
-#healthBar { width: 100%; height: 100%; background: #ff3333; transition: width 0.2s; }
-#healthText { position: absolute; width: 100%; text-align: center; line-height: 20px; color: white; font-weight: bold; font-size: 12px; text-shadow: 1px 1px 0 black; }
-#controlsInfo { position: fixed; bottom: 10px; right: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 12px; pointer-events: none; }
-#animSpeedControl { position: fixed; bottom: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 8px; color: white; font-size: 12px; z-index: 20; display: flex; gap: 10px; align-items: center; pointer-events: auto; }
-#animSpeedControl input { width: 200px; cursor: pointer; }
-#animSpeedValue { min-width: 55px; text-align: center; }
-#debugAnim { position: fixed; bottom: 80px; left: 20px; background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 8px; color: #ffaa44; font-family: monospace; font-size: 14px; pointer-events: none; z-index: 20; }
-.damageNumber { position: absolute; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; z-index: 20; }
-@keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
-#respawnMessage { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); color: white; padding: 24px 48px; border-radius: 24px; text-align: center; z-index: 100; display: none; font-family: 'Segoe UI', system-ui, monospace; letter-spacing: 1px; box-shadow: 0 0 20px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); }
-#respawnText { font-size: 20px; font-weight: 400; margin-bottom: 12px; opacity: 0.9; }
-#respawnCountdown { font-size: 64px; font-weight: 700; line-height: 1; text-shadow: 0 0 10px rgba(255,255,255,0.6); color: #ffaa44; }
+#ui {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    color: white;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+#ping {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    color: white;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+#health {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    width: 200px;
+    height: 20px;
+    background: rgba(0,0,0,0.7);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #fff;
+    z-index: 10;
+}
+
+#healthBar {
+    width: 100%;
+    height: 100%;
+    background: #ff3333;
+    transition: width 0.2s;
+}
+
+#healthText {
+    position: absolute;
+    width: 100%;
+    text-align: center;
+    line-height: 20px;
+    color: white;
+    font-weight: bold;
+    font-size: 12px;
+    text-shadow: 1px 1px 0 black;
+}
+
+#controlsInfo {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    color: white;
+    background: rgba(0,0,0,0.5);
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    pointer-events: none;
+}
+
+/* Control deslizante para duración por frame */
+#animSpeedControl {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0,0,0,0.7);
+    padding: 8px 12px;
+    border-radius: 8px;
+    color: white;
+    font-size: 12px;
+    z-index: 20;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    pointer-events: auto;
+}
+#animSpeedControl input {
+    width: 200px;
+    cursor: pointer;
+}
+#animSpeedValue {
+    min-width: 55px;
+    text-align: center;
+}
+
+/* Indicador de animación */
+#debugAnim {
+    position: fixed;
+    bottom: 80px;
+    left: 20px;
+    background: rgba(0,0,0,0.7);
+    padding: 4px 10px;
+    border-radius: 8px;
+    color: #ffaa44;
+    font-family: monospace;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.damageNumber {
+    position: absolute;
+    font-weight: bold;
+    font-size: 18px;
+    text-shadow: 1px 1px 0 black;
+    animation: floatUp 0.8s forwards;
+    pointer-events: none;
+    z-index: 20;
+}
+
+@keyframes floatUp {
+    0% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-40px); }
+}
+
+#respawnMessage {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    color: white;
+    padding: 24px 48px;
+    border-radius: 24px;
+    text-align: center;
+    z-index: 100;
+    display: none;
+    font-family: 'Segoe UI', system-ui, monospace;
+    letter-spacing: 1px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+#respawnText {
+    font-size: 20px;
+    font-weight: 400;
+    margin-bottom: 12px;
+    opacity: 0.9;
+}
+
+#respawnCountdown {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: 0 0 10px rgba(255,255,255,0.6);
+    color: #ffaa44;
+}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="ui"><div>🏆 Jugadores vivos: <span id="aliveCount">0</span></div></div>
-<div id="ping">📡 Ping: <span id="pingValue">0</span> ms</div>
-<div id="health"><div id="healthBar"></div><div id="healthText">100 HP</div></div>
-<div id="controlsInfo">🖱️ WASD o arrastrar | 💥 Colisión = combate automático</div>
-<div id="animSpeedControl"><span>🎬 Duración por frame:</span><input type="range" id="animSpeedSlider" min="0.08" max="2.0" step="0.01" value="0.25"><span id="animSpeedValue">0.25 s</span></div>
-<div id="debugAnim">Frame actual: <span id="currentFrame">1</span> | Próximo cambio en <span id="timeToNext">0.00</span> s</div>
-<div id="respawnMessage"><div id="respawnText">Reapareciendo en</div><div id="respawnCountdown">5</div></div>
+<div id="ui">
+    <div>🏆 Jugadores vivos: <span id="aliveCount">0</span></div>
+</div>
+<div id="ping">
+    📡 Ping: <span id="pingValue">0</span> ms
+</div>
+<div id="health">
+    <div id="healthBar"></div>
+    <div id="healthText">100 HP</div>
+</div>
+<div id="controlsInfo">
+    🖱️ WASD o arrastrar | 💥 Colisión = combate automático
+</div>
+<div id="animSpeedControl">
+    <span>🎬 Duración por frame:</span>
+    <input type="range" id="animSpeedSlider" min="0.08" max="2.0" step="0.01" value="0.25">
+    <span id="animSpeedValue">0.25 s</span>
+</div>
+<div id="debugAnim">
+    Frame actual: <span id="currentFrame">1</span> | Próximo cambio en <span id="timeToNext">0.00</span> s
+</div>
+<div id="respawnMessage">
+    <div id="respawnText">Reapareciendo en</div>
+    <div id="respawnCountdown">5</div>
+</div>
 
 <script>
 const canvas = document.getElementById("game");
@@ -55,13 +214,15 @@ const PING_HISTORY_LEN = 5;
 
 // ========== CONFIGURACIÓN DEL SPRITE ==========
 const SPRITE_URL = "ch003.png";
-const TOTAL_IMAGE_SIZE = 128;
-const TILES_PER_ROW = 4;
-const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW;
-const SPRITE_SCALE = 48 / TILE_SIZE;
+const TOTAL_IMAGE_SIZE = 128;      // imagen completa 128x128
+const TILES_PER_ROW = 4;            // 4x4 grid
+const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW; // 32px por tile
+
+const SPRITE_SCALE = 48 / TILE_SIZE; // 1.5 → 48px final
 const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
 const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
 
+// Recortes (0 si no hay bordes)
 const CROP_LEFT = 0;
 const CROP_TOP = 0;
 const CROP_WIDTH = TILE_SIZE - CROP_LEFT;
@@ -69,12 +230,24 @@ const CROP_HEIGHT = TILE_SIZE - CROP_TOP;
 
 let spriteSheet = new Image();
 let spriteLoaded = false;
-spriteSheet.onload = () => { spriteLoaded = true; console.log("Sprite sheet cargado"); };
+spriteSheet.onload = () => {
+    spriteLoaded = true;
+    console.log("Sprite sheet cargado");
+};
 spriteSheet.src = SPRITE_URL;
 
-const DIRECTION_TO_ROW = { down: 0, up: 1, left: 2, right: 3 };
+// Mapeo dirección → fila (0:abajo, 1:arriba, 2:izquierda, 3:derecha)
+const DIRECTION_TO_ROW = {
+    down: 0,
+    up: 1,
+    left: 2,
+    right: 3
+};
 
-let animInterval = 0.25;
+// Animación por tiempo (intervalo ajustable)
+let animInterval = 0.25; // segundos por frame
+
+// Control deslizante
 const slider = document.getElementById('animSpeedSlider');
 const speedValue = document.getElementById('animSpeedValue');
 slider.addEventListener('input', (e) => {
@@ -82,11 +255,14 @@ slider.addEventListener('input', (e) => {
     speedValue.innerText = animInterval.toFixed(2) + ' s';
 });
 
-let playerAnim = {}; // { [id]: { frame, directionRow, moving, nextFrameTime } }
+// Animación por jugador
+let playerAnim = {};
 
+// Elementos del debug
 const currentFrameSpan = document.getElementById('currentFrame');
 const timeToNextSpan = document.getElementById('timeToNext');
 
+// ========== FUNCIONES AUXILIARES ==========
 function getPlayerColor(id, isMe, serverColor) {
     if (isMe) return "#88ff88";
     if (serverColor) return serverColor;
@@ -106,10 +282,12 @@ function resize() {
 resize();
 window.addEventListener("resize", resize);
 
+// ========== WEBSOCKET ==========
 const ws = new WebSocket(location.origin.replace("http", "ws"));
 
 ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data);
+    
     if (data.type === 'init') {
         myId = data.id;
     }
@@ -117,6 +295,7 @@ ws.onmessage = (msg) => {
         serverPlayers = data.players;
         zone = data.zone;
         aliveCount = data.aliveCount;
+        
         if (myId && serverPlayers[myId]) {
             localPlayerHealth = serverPlayers[myId].health;
             const percent = Math.max(0, (localPlayerHealth / 100) * 100);
@@ -125,6 +304,7 @@ ws.onmessage = (msg) => {
             lastAttackTime = serverPlayers[myId].lastAttackTime;
         }
         document.getElementById('aliveCount').innerText = aliveCount;
+        
         if (data.timestamp) {
             let rawPing = Date.now() - data.timestamp;
             if (rawPing < 0) rawPing = 0;
@@ -135,8 +315,11 @@ ws.onmessage = (msg) => {
         }
     }
     else if (data.type === 'damage') {
-        if (data.target === myId) showDamageNumber(data.damage, true);
-        else if (data.from === myId) showDamageNumber(data.damage, false, data.target);
+        if (data.target === myId) {
+            showDamageNumber(data.damage, true);
+        } else if (data.from === myId) {
+            showDamageNumber(data.damage, false, data.target);
+        }
     }
 };
 
@@ -151,6 +334,7 @@ function showDamageNumber(damage, isMe, targetId) {
     setTimeout(() => div.remove(), 800);
 }
 
+// ========== CONTROLES ==========
 document.addEventListener("keydown", (e) => {
     if (e.key === "w") input.dy = -1;
     if (e.key === "s") input.dy = 1;
@@ -163,7 +347,10 @@ document.addEventListener("keyup", (e) => {
 });
 
 let startX = 0, startY = 0;
-canvas.addEventListener("touchstart", (e) => { startX = e.touches[0].clientX; startY = e.touches[0].clientY; });
+canvas.addEventListener("touchstart", (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+});
 canvas.addEventListener("touchmove", (e) => {
     let dx = e.touches[0].clientX - startX;
     let dy = e.touches[0].clientY - startY;
@@ -171,7 +358,10 @@ canvas.addEventListener("touchmove", (e) => {
     input.dx = dx / mag;
     input.dy = dy / mag;
 });
-canvas.addEventListener("touchend", () => { input.dx = 0; input.dy = 0; });
+canvas.addEventListener("touchend", () => {
+    input.dx = 0;
+    input.dy = 0;
+});
 
 setInterval(() => {
     if (ws.readyState === 1 && myId) {
@@ -179,15 +369,18 @@ setInterval(() => {
     }
 }, 30);
 
+// ========== INTERPOLACIÓN Y ANIMACIÓN ==========
 function interpolateAll() {
     for (let id in serverPlayers) {
         const sp = serverPlayers[id];
         if (!players[id]) {
             players[id] = { ...sp };
             playerAnim[id] = {
-                frame: 1,
+                frame: 1,                      // frame quieto
                 directionRow: 0,
                 moving: false,
+                lastVisualX: sp.x,
+                lastVisualY: sp.y,
                 nextFrameTime: performance.now() / 1000 + animInterval
             };
         } else {
@@ -219,41 +412,38 @@ function updateAnimations() {
         const anim = playerAnim[id];
         if (!anim) continue;
 
+        // Para el jugador local usamos input (teclas), para los remotos usamos desplazamiento visual
         let moving = false;
         let direction = null;
-
         if (id === myId) {
-            // Usar input para movimiento local (más estable)
+            // Jugador local: determina movimiento y dirección a partir de input
             moving = (input.dx !== 0 || input.dy !== 0);
             if (moving) {
                 direction = getDirectionFromMovement(input.dx, input.dy);
             }
         } else {
-            // Para otros jugadores, usar desplazamiento visual
-            // Guardamos última posición en el objeto anim (no lo teníamos, añadimos)
-            if (anim.lastX === undefined) {
-                anim.lastX = p.x;
-                anim.lastY = p.y;
-            }
-            const deltaX = p.x - anim.lastX;
-            const deltaY = p.y - anim.lastY;
+            // Jugadores remotos: usamos desplazamiento visual
+            const deltaX = p.x - anim.lastVisualX;
+            const deltaY = p.y - anim.lastVisualY;
             const distance = Math.hypot(deltaX, deltaY);
             moving = distance > 0.5;
-            if (moving) direction = getDirectionFromMovement(deltaX, deltaY);
-            anim.lastX = p.x;
-            anim.lastY = p.y;
+            if (moving) {
+                direction = getDirectionFromMovement(deltaX, deltaY);
+            }
+            anim.lastVisualX = p.x;
+            anim.lastVisualY = p.y;
         }
 
         if (moving && direction) {
             const newRow = DIRECTION_TO_ROW[direction];
             if (anim.directionRow !== newRow) {
-                // Cambio de dirección: resetear frame y tiempo
+                // Cambio de dirección: reiniciar frame a 0 y programar próximo cambio
                 anim.directionRow = newRow;
                 anim.frame = 0;
                 anim.nextFrameTime = now + animInterval;
                 if (id === myId) console.log(`Cambio dirección a ${direction}, frame=0`);
             } else {
-                // Misma dirección: comprobar si es hora de cambiar frame
+                // Misma dirección: si es hora de cambiar frame
                 if (now >= anim.nextFrameTime) {
                     anim.frame = (anim.frame + 1) % 4;
                     anim.nextFrameTime = now + animInterval;
@@ -262,11 +452,13 @@ function updateAnimations() {
             }
             anim.moving = true;
         } else {
-            // No se mueve: mostrar frame 1 (quieto) pero NO modificar nextFrameTime
+            // Quieto: mostrar frame 1 (quieto) pero no tocar el temporizador
             anim.frame = 1;
             anim.moving = false;
+            // No modificamos nextFrameTime para que al retomar el movimiento el ciclo continúe correctamente
         }
 
+        // Actualizar debug para jugador local
         if (id === myId) {
             currentFrameSpan.innerText = anim.frame;
             const timeLeft = Math.max(0, anim.nextFrameTime - now);
@@ -275,12 +467,15 @@ function updateAnimations() {
     }
 }
 
+// ========== DIBUJADO ==========
 function drawGround(camX, camY) {
     ctx.fillStyle = "#e0b05a";
     ctx.fillRect(camX, camY, canvas.width, canvas.height);
+    
     const gridSpacing = 80;
     const startX = Math.floor(camX / gridSpacing) * gridSpacing;
     const startY = Math.floor(camY / gridSpacing) * gridSpacing;
+    
     ctx.fillStyle = "#c99a3a";
     for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
         for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
@@ -293,13 +488,18 @@ function drawGround(camX, camY) {
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
     const localPlayer = players[myId];
     if (!localPlayer) return;
+    
     let camX = localPlayer.x - canvas.width / 2;
     let camY = localPlayer.y - canvas.height / 2;
+    
     ctx.save();
     ctx.translate(-camX, -camY);
+    
     drawGround(camX, camY);
+    
     // Zona segura
     ctx.beginPath();
     ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
@@ -308,18 +508,23 @@ function draw() {
     ctx.strokeStyle = "rgba(0, 200, 255, 0.9)";
     ctx.lineWidth = 4;
     ctx.stroke();
+    
     ctx.beginPath();
     ctx.arc(zone.x, zone.y, zone.radius + 5, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
     ctx.stroke();
-    // Dibujar jugadores
+    
+    // Dibujar todos los jugadores
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
+        
         const isMe = (id === myId);
         const anim = playerAnim[id] || { frame: 1, directionRow: 0 };
+        
         const row = anim.directionRow;
         const frameCol = anim.frame;
+        
         if (spriteLoaded) {
             const srcX = frameCol * TILE_SIZE + CROP_LEFT;
             const srcY = row * TILE_SIZE + CROP_TOP;
@@ -329,6 +534,7 @@ function draw() {
             const destY = p.y - SPRITE_H/2;
             ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, SPRITE_W, SPRITE_H);
         } else {
+            // Fallback: círculo
             ctx.beginPath();
             ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
             ctx.fillStyle = getPlayerColor(id, isMe, p.color);
@@ -337,6 +543,7 @@ function draw() {
             ctx.lineWidth = 2;
             ctx.stroke();
         }
+        
         // Barra de vida
         const healthPercent = p.health / 100;
         const barWidth = 30;
@@ -347,11 +554,13 @@ function draw() {
         ctx.fillRect(barX, barY, barWidth, barHeight);
         ctx.fillStyle = "#ff3333";
         ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+        
         // Nombre
         ctx.font = "12px Arial";
         ctx.fillStyle = "white";
         ctx.shadowBlur = 2;
         ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 12);
+        
         // Cooldown local
         if (isMe && lastAttackTime) {
             const now = Date.now() / 1000;
@@ -365,7 +574,9 @@ function draw() {
             }
         }
     }
+    
     ctx.restore();
+    
     ctx.font = "bold 14px monospace";
     ctx.fillStyle = "white";
     ctx.shadowBlur = 2;
@@ -376,11 +587,14 @@ function draw() {
     }
 }
 
+// ========== RESPAWN ==========
 function updateRespawnMessage() {
     const localPlayer = players[myId];
     const msgDiv = document.getElementById('respawnMessage');
     const countdownSpan = document.getElementById('respawnCountdown');
+    
     if (!localPlayer) return;
+    
     if (!localPlayer.alive) {
         if (deathTime === null) deathTime = Date.now();
         const elapsed = (Date.now() - deathTime) / 1000;
@@ -393,6 +607,7 @@ function updateRespawnMessage() {
     }
 }
 
+// ========== LOOP PRINCIPAL ==========
 function gameLoop() {
     requestAnimationFrame(gameLoop);
     interpolateAll();
