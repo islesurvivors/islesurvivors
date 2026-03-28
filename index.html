@@ -211,13 +211,12 @@ canvas { display:block; cursor: crosshair; }
     let pingHistory = [];
     const PING_HISTORY_LEN = 5;
 
-    // ========== CONFIGURACIÓN DEL SPRITE ==========
     const SPRITE_URL = "ch003.png";
-    const TOTAL_IMAGE_SIZE = 128;      // imagen completa 128x128
-    const TILES_PER_ROW = 4;            // 4x4 grid
-    const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW; // 32px por tile
+    const TOTAL_IMAGE_SIZE = 128;
+    const TILES_PER_ROW = 4;
+    const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW;
 
-    const SPRITE_SCALE = 48 / TILE_SIZE; // 1.5 → 48px final
+    const SPRITE_SCALE = 48 / TILE_SIZE;
     const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
     const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
 
@@ -228,10 +227,7 @@ canvas { display:block; cursor: crosshair; }
 
     let spriteSheet = new Image();
     let spriteLoaded = false;
-    spriteSheet.onload = () => {
-        spriteLoaded = true;
-        console.log("Sprite sheet cargado");
-    };
+    spriteSheet.onload = () => { spriteLoaded = true; };
     spriteSheet.src = SPRITE_URL;
 
     const DIRECTION_TO_ROW = {
@@ -241,9 +237,8 @@ canvas { display:block; cursor: crosshair; }
         right: 3
     };
 
-    let animInterval = 0.25; // segundos por frame
+    let animInterval = 0.25;
 
-    // Elementos del DOM (con comprobación)
     const slider = document.getElementById('animSpeedSlider');
     const speedValue = document.getElementById('animSpeedValue');
     if (slider && speedValue) {
@@ -258,7 +253,6 @@ canvas { display:block; cursor: crosshair; }
     const currentFrameSpan = document.getElementById('currentFrame');
     const timeToNextSpan = document.getElementById('timeToNext');
 
-    // ========== FUNCIONES AUXILIARES ==========
     function getPlayerColor(id, isMe, serverColor) {
         if (isMe) return "#88ff88";
         if (serverColor) return serverColor;
@@ -278,7 +272,6 @@ canvas { display:block; cursor: crosshair; }
     resize();
     window.addEventListener("resize", resize);
 
-    // ========== WEBSOCKET ==========
     const ws = new WebSocket(location.origin.replace("http", "ws"));
 
     ws.onmessage = (msg) => {
@@ -334,7 +327,6 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
-    // ========== CONTROLES ==========
     document.addEventListener("keydown", (e) => {
         if (e.key === "w") input.dy = -1;
         if (e.key === "s") input.dy = 1;
@@ -372,7 +364,6 @@ canvas { display:block; cursor: crosshair; }
         }
     }, 30);
 
-    // ========== INTERPOLACIÓN Y ANIMACIÓN ==========
     function interpolateAll() {
         for (let id in serverPlayers) {
             const sp = serverPlayers[id];
@@ -419,23 +410,17 @@ canvas { display:block; cursor: crosshair; }
             let direction = null;
 
             if (id === myId) {
-                // Jugador local: basado en desplazamiento visual con umbral para evitar ruido
                 const deltaX = p.x - anim.lastVisualX;
                 const deltaY = p.y - anim.lastVisualY;
                 const distance = Math.hypot(deltaX, deltaY);
-                
-                // Umbral de movimiento mínimo (2 píxeles) para ignorar vibraciones por lag/interpolación
                 const MOVEMENT_THRESHOLD = 2.0;
                 moving = distance > MOVEMENT_THRESHOLD;
-                
                 if (moving) {
                     direction = getDirectionFromMovement(deltaX, deltaY);
                 }
-                // Actualizar siempre la última posición visual para el próximo frame
                 anim.lastVisualX = p.x;
                 anim.lastVisualY = p.y;
             } else {
-                // Jugadores remotos: igual que antes (sin cambios)
                 const deltaX = p.x - anim.lastVisualX;
                 const deltaY = p.y - anim.lastVisualY;
                 const distance = Math.hypot(deltaX, deltaY);
@@ -447,16 +432,13 @@ canvas { display:block; cursor: crosshair; }
                 anim.lastVisualY = p.y;
             }
 
-            // Manejo de dirección y frames
             if (moving && direction) {
                 const newRow = DIRECTION_TO_ROW[direction];
                 if (anim.directionRow !== newRow) {
-                    // Cambio de dirección: reiniciar frame a 0 y programar próximo cambio
                     anim.directionRow = newRow;
                     anim.frame = 0;
                     anim.nextFrameTime = now + animInterval;
                 } else {
-                    // Misma dirección: avanzar frame si es hora
                     if (now >= anim.nextFrameTime) {
                         anim.frame = (anim.frame + 1) % 4;
                         anim.nextFrameTime = now + animInterval;
@@ -464,13 +446,10 @@ canvas { display:block; cursor: crosshair; }
                 }
                 anim.moving = true;
             } else {
-                // Quieto: mostrar frame 1 (quieto) pero conservar la dirección
                 anim.frame = 1;
                 anim.moving = false;
-                // No modificamos nextFrameTime para que al retomar el movimiento el ciclo continúe correctamente
             }
 
-            // Actualizar debug para jugador local
             if (id === myId) {
                 if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
                 if (timeToNextSpan) {
@@ -481,7 +460,6 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    // ========== DIBUJADO ==========
     function drawGround(camX, camY) {
         ctx.fillStyle = "#e0b05a";
         ctx.fillRect(camX, camY, canvas.width, canvas.height);
@@ -514,7 +492,6 @@ canvas { display:block; cursor: crosshair; }
         
         drawGround(camX, camY);
         
-        // Zona segura
         ctx.beginPath();
         ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
@@ -528,7 +505,6 @@ canvas { display:block; cursor: crosshair; }
         ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
         ctx.stroke();
         
-        // Dibujar todos los jugadores
         for (let id in players) {
             const p = players[id];
             if (!p.alive) continue;
@@ -548,7 +524,6 @@ canvas { display:block; cursor: crosshair; }
                 const destY = p.y - SPRITE_H/2;
                 ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, SPRITE_W, SPRITE_H);
             } else {
-                // Fallback: círculo
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
                 ctx.fillStyle = getPlayerColor(id, isMe, p.color);
@@ -558,7 +533,6 @@ canvas { display:block; cursor: crosshair; }
                 ctx.stroke();
             }
             
-            // Barra de vida
             const healthPercent = p.health / 100;
             const barWidth = 30;
             const barHeight = 6;
@@ -569,13 +543,11 @@ canvas { display:block; cursor: crosshair; }
             ctx.fillStyle = "#ff3333";
             ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
             
-            // Nombre
             ctx.font = "12px Arial";
             ctx.fillStyle = "white";
             ctx.shadowBlur = 2;
             ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 12);
             
-            // Cooldown local
             if (isMe && lastAttackTime) {
                 const now = Date.now() / 1000;
                 const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
@@ -601,7 +573,6 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    // ========== RESPAWN ==========
     function updateRespawnMessage() {
         const localPlayer = players[myId];
         const msgDiv = document.getElementById('respawnMessage');
@@ -621,7 +592,6 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    // ========== LOOP PRINCIPAL ==========
     function gameLoop() {
         requestAnimationFrame(gameLoop);
         interpolateAll();
