@@ -75,8 +75,8 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
 }
 
-/* Control deslizante para distancia por frame */
-#animDistanceControl {
+/* Control deslizante para velocidad de animación (segundos por frame) */
+#animSpeedControl {
     position: fixed;
     bottom: 20px;
     left: 20px;
@@ -91,12 +91,12 @@ canvas { display:block; cursor: crosshair; }
     align-items: center;
     pointer-events: auto;
 }
-#animDistanceControl input {
+#animSpeedControl input {
     width: 150px;
     cursor: pointer;
 }
-#animDistanceValue {
-    min-width: 40px;
+#animSpeedValue {
+    min-width: 45px;
     text-align: center;
 }
 
@@ -165,10 +165,10 @@ canvas { display:block; cursor: crosshair; }
 <div id="controlsInfo">
     🖱️ WASD o arrastrar | 💥 Colisión = combate automático
 </div>
-<div id="animDistanceControl">
-    <span>🚶 Distancia por frame:</span>
-    <input type="range" id="distPerFrameSlider" min="4" max="24" step="1" value="12">
-    <span id="animDistanceValue">12 px</span>
+<div id="animSpeedControl">
+    <span>🎬 Frames cada:</span>
+    <input type="range" id="animSpeedSlider" min="0.08" max="0.4" step="0.01" value="0.2">
+    <span id="animSpeedValue">0.20 s</span>
 </div>
 <div id="respawnMessage">
     <div id="respawnText">Reapareciendo en</div>
@@ -226,19 +226,20 @@ const DIRECTION_TO_ROW = {
     right: 3
 };
 
-// Distancia necesaria para cambiar de frame (ajustable)
-let distancePerFrame = 12; // píxeles
+// Animación por tiempo
+let animInterval = 0.2; // segundos por frame
+let lastFrameChangeTime = performance.now() / 1000;
 
 // Control deslizante
-const slider = document.getElementById('distPerFrameSlider');
-const distanceValue = document.getElementById('animDistanceValue');
+const slider = document.getElementById('animSpeedSlider');
+const speedValue = document.getElementById('animSpeedValue');
 slider.addEventListener('input', (e) => {
-    distancePerFrame = parseInt(e.target.value);
-    distanceValue.innerText = distancePerFrame + ' px';
+    animInterval = parseFloat(e.target.value);
+    speedValue.innerText = animInterval.toFixed(2) + ' s';
 });
 
 // Animación por jugador
-let playerAnim = {}; // { [id]: { frame, directionRow, moving, lastVisualX, lastVisualY, distanceAccum } }
+let playerAnim = {}; // { [id]: { frame, directionRow, moving, lastVisualX, lastVisualY, lastFrameTime } }
 
 // ========== FUNCIONES AUXILIARES ==========
 function getPlayerColor(id, isMe, serverColor) {
@@ -359,7 +360,7 @@ function interpolateAll() {
                 moving: false,
                 lastVisualX: sp.x,
                 lastVisualY: sp.y,
-                distanceAccum: 0
+                lastFrameTime: performance.now() / 1000
             };
         } else {
             players[id].x += (sp.x - players[id].x) * 0.7;
@@ -382,6 +383,7 @@ function getDirectionFromMovement(dx, dy) {
 }
 
 function updateAnimations() {
+    const now = performance.now() / 1000;
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
@@ -404,17 +406,15 @@ function updateAnimations() {
         if (moving && direction) {
             const newRow = DIRECTION_TO_ROW[direction];
             if (anim.directionRow !== newRow) {
-                // Cambio de dirección: reiniciar frame al inicio (0) y acumulador
+                // Cambio de dirección: reiniciar frame al inicio (0) y temporizador
                 anim.directionRow = newRow;
                 anim.frame = 0;
-                anim.distanceAccum = 0;
+                anim.lastFrameTime = now;
             } else {
-                // Misma dirección: acumular distancia
-                anim.distanceAccum += distance;
-                if (anim.distanceAccum >= distancePerFrame) {
-                    // Avanzar al siguiente frame cíclicamente 0→1→2→3→0...
+                // Misma dirección: actualizar frame cada 'animInterval' segundos
+                if (now - anim.lastFrameTime >= animInterval) {
                     anim.frame = (anim.frame + 1) % 4;
-                    anim.distanceAccum = 0;
+                    anim.lastFrameTime = now;
                 }
             }
             anim.moving = true;
@@ -422,7 +422,7 @@ function updateAnimations() {
             // Quieto: mostrar frame quieto (índice 1)
             anim.frame = 1;
             anim.moving = false;
-            anim.distanceAccum = 0;
+            // No reseteamos el temporizador para que al retomar el movimiento la animación continúe desde donde estaba
         }
     }
 }
