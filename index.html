@@ -176,7 +176,7 @@ canvas { display:block; cursor: crosshair; }
     <div id="healthText">100 HP</div>
 </div>
 <div id="controlsInfo">
-    🖱️ WASD o arrastrar | 💥 Colisión = combate automático
+    🖱️ WASD o arrastrar | 💥 Colisión = combate automático | 🖱️ Click para mover
 </div>
 <div id="animSpeedControl">
     <span>🎬 Duración por frame:</span>
@@ -213,6 +213,10 @@ canvas { display:block; cursor: crosshair; }
     };
     
     let input = { dx: 0, dy: 0 };
+    let targetPos = null;          // { x, y } o null
+    const CLICK_MOVE_THRESHOLD = 10; // distancia en píxeles para detenerse
+    const WORLD_SIZE = 1600;        // debe coincidir con el servidor
+    const PLAYER_RADIUS = 8;        // radio usado en el servidor (para clamping)
     
     function updateInputFromKeys() {
         let rawDx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
@@ -229,6 +233,8 @@ canvas { display:block; cursor: crosshair; }
         else if (key === 'a') { keyState.a = true; changed = true; e.preventDefault(); }
         else if (key === 'd') { keyState.d = true; changed = true; e.preventDefault(); }
         if (changed) {
+            // Cualquier tecla WASD cancela el movimiento por clic
+            targetPos = null;
             updateInputFromKeys();
             isTouchInput = false;
         }
@@ -366,12 +372,14 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
+    // Touch handlers modificados para activar el modo táctil
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
         isTouchInput = true;
+        targetPos = null;  // cancelar click movement al tocar
     });
     canvas.addEventListener("touchmove", (e) => {
         e.preventDefault();
@@ -390,8 +398,57 @@ canvas { display:block; cursor: crosshair; }
         keyState.w = keyState.s = keyState.a = keyState.d = false;
     });
 
+    // Click para mover (point and click)
+    canvas.addEventListener("click", (e) => {
+        if (!myId) return;
+        const local = players[myId];
+        if (!local || !local.alive) return;
+        
+        // Obtener coordenadas de la cámara
+        const camX = local.x - canvas.width / 2;
+        const camY = local.y - canvas.height / 2;
+        
+        // Coordenadas del clic en el canvas
+        const rect = canvas.getBoundingClientRect();
+        const canvasX = e.clientX - rect.left;
+        const canvasY = e.clientY - rect.top;
+        
+        // Convertir a mundo
+        let worldX = canvasX + camX;
+        let worldY = canvasY + camY;
+        
+        // Clampear a los límites del mundo (usando los mismos valores del servidor)
+        worldX = Math.min(Math.max(worldX, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+        worldY = Math.min(Math.max(worldY, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+        
+        targetPos = { x: worldX, y: worldY };
+        // Cancelar cualquier entrada manual para que prevalezca el click
+        keyState.w = keyState.s = keyState.a = keyState.d = false;
+        isTouchInput = false;
+        // input se calculará en el próximo envío
+    });
+
     setInterval(() => {
         if (ws.readyState === 1 && myId) {
+            // Calcular input según el modo activo
+            if (targetPos && players[myId] && players[myId].alive) {
+                const myPos = players[myId];
+                const dx = targetPos.x - myPos.x;
+                const dy = targetPos.y - myPos.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < CLICK_MOVE_THRESHOLD) {
+                    // Llegó al destino
+                    targetPos = null;
+                    input.dx = 0;
+                    input.dy = 0;
+                } else {
+                    input.dx = dx / dist;
+                    input.dy = dy / dist;
+                }
+            } else {
+                // Si no hay target, se usa el input de teclado o táctil
+                // El input ya está actualizado por los eventos
+            }
             ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
         }
     }, 30);
@@ -605,24 +662,6 @@ canvas { display:block; cursor: crosshair; }
                     ctx.stroke();
                 }
             }
-            
-            // Hitbox visual eliminado (ya no se dibuja)
-            // Si en el futuro quisieras verlo, podrías descomentar este bloque.
-            /*
-            ctx.save();
-            ctx.globalAlpha = 0.4;
-            ctx.fillStyle = "#ff3333";
-            const hitboxHeight = SPRITE_H / 4;       // altura (puedes ajustar)
-            const hitboxWidth = SPRITE_W * 0.7;      // más estrecho (70% del ancho)
-            const hitboxLeft = p.x - hitboxWidth/2;
-            const hitboxTop = p.y + SPRITE_H/2 - hitboxHeight;
-            ctx.fillRect(hitboxLeft, hitboxTop, hitboxWidth, hitboxHeight);
-            ctx.strokeStyle = "#ff8888";
-            ctx.lineWidth = 1;
-            ctx.globalAlpha = 0.7;
-            ctx.strokeRect(hitboxLeft, hitboxTop, hitboxWidth, hitboxHeight);
-            ctx.restore();
-            */
         }
         ctx.restore();
         
@@ -647,6 +686,8 @@ canvas { display:block; cursor: crosshair; }
             let remaining = Math.max(0, Math.ceil(5 - elapsed));
             if (countdownSpan) countdownSpan.innerText = remaining;
             if (msgDiv) msgDiv.style.display = 'block';
+            // Si muere, cancelar el target
+            targetPos = null;
         } else {
             if (deathTime !== null) deathTime = null;
             if (msgDiv) msgDiv.style.display = 'none';
