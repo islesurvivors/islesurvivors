@@ -11,7 +11,7 @@ const server = app.listen(process.env.PORT || 3000, () => {
 const wss = new WebSocket.Server({ server });
 
 const WORLD_SIZE = 1600;
-const PLAYER_RADIUS = 15;
+const PLAYER_RADIUS = 12;
 const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
