@@ -75,6 +75,31 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
 }
 
+/* Control deslizante para velocidad de animación */
+#animSpeedControl {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0,0,0,0.7);
+    padding: 8px 12px;
+    border-radius: 8px;
+    color: white;
+    font-size: 12px;
+    z-index: 20;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    pointer-events: auto;
+}
+#animSpeedControl input {
+    width: 150px;
+    cursor: pointer;
+}
+#animSpeedValue {
+    min-width: 40px;
+    text-align: center;
+}
+
 .damageNumber {
     position: absolute;
     font-weight: bold;
@@ -140,6 +165,11 @@ canvas { display:block; cursor: crosshair; }
 <div id="controlsInfo">
     🖱️ WASD o arrastrar | 💥 Colisión = combate automático
 </div>
+<div id="animSpeedControl">
+    <span>⚡ Velocidad animación:</span>
+    <input type="range" id="animSpeedSlider" min="0.05" max="0.4" step="0.01" value="0.15">
+    <span id="animSpeedValue">0.15 s</span>
+</div>
 <div id="respawnMessage">
     <div id="respawnText">Reapareciendo en</div>
     <div id="respawnCountdown">5</div>
@@ -196,14 +226,20 @@ const DIRECTION_TO_ROW = {
     right: 3
 };
 
-// ===== AJUSTA ESTE VALOR PARA CAMBIAR LA VELOCIDAD DE ANIMACIÓN =====
-// Mayor número = animación más lenta, menor = más rápida.
-// Recomendado: entre 10 y 18 para un movimiento natural.
-const DIST_PER_FRAME = 14;  // antes 8, ahora más lento para mayor fluidez
-// ====================================================================
+// Variables para la animación por tiempo
+let animInterval = 0.15; // segundos entre frames (se puede ajustar con el slider)
+let lastAnimUpdate = performance.now() / 1000;
+
+// Control deslizante
+const slider = document.getElementById('animSpeedSlider');
+const speedValue = document.getElementById('animSpeedValue');
+slider.addEventListener('input', (e) => {
+    animInterval = parseFloat(e.target.value);
+    speedValue.innerText = animInterval.toFixed(2) + ' s';
+});
 
 // Animación por jugador
-let playerAnim = {};
+let playerAnim = {}; // { [id]: { frame, directionRow, moving, lastVisualX, lastVisualY, lastAnimTime } }
 
 // ========== FUNCIONES AUXILIARES ==========
 function getPlayerColor(id, isMe, serverColor) {
@@ -324,7 +360,7 @@ function interpolateAll() {
                 moving: false,
                 lastVisualX: sp.x,
                 lastVisualY: sp.y,
-                distanceAccum: 0
+                lastAnimTime: performance.now() / 1000
             };
         } else {
             players[id].x += (sp.x - players[id].x) * 0.7;
@@ -347,6 +383,7 @@ function getDirectionFromMovement(dx, dy) {
 }
 
 function updateAnimations() {
+    const now = performance.now() / 1000;
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
@@ -354,7 +391,7 @@ function updateAnimations() {
         const anim = playerAnim[id];
         if (!anim) continue;
 
-        // Desplazamiento visual desde la última posición guardada
+        // Calcular desplazamiento visual desde la última posición guardada
         const deltaX = p.x - anim.lastVisualX;
         const deltaY = p.y - anim.lastVisualY;
         const distance = Math.hypot(deltaX, deltaY);
@@ -362,32 +399,30 @@ function updateAnimations() {
         let moving = distance > 0.5;
         let direction = moving ? getDirectionFromMovement(deltaX, deltaY) : null;
 
-        // Actualizar última posición visual
+        // Actualizar última posición visual para la próxima iteración
         anim.lastVisualX = p.x;
         anim.lastVisualY = p.y;
 
         if (moving && direction) {
             const newRow = DIRECTION_TO_ROW[direction];
             if (anim.directionRow !== newRow) {
-                // Cambio de dirección: reiniciar frame al inicio y acumulador
+                // Cambio de dirección: reiniciar frame al inicio y tiempo
                 anim.directionRow = newRow;
                 anim.frame = 0;
-                anim.distanceAccum = 0;
+                anim.lastAnimTime = now;
             } else {
-                // Misma dirección: acumular distancia
-                anim.distanceAccum += distance;
-                if (anim.distanceAccum >= DIST_PER_FRAME) {
-                    // Avanzar al siguiente frame (cíclico)
+                // Misma dirección: actualizar frame cada 'animInterval' segundos
+                if (now - anim.lastAnimTime >= animInterval) {
                     anim.frame = (anim.frame + 1) % 4;
-                    anim.distanceAccum = 0;
+                    anim.lastAnimTime = now;
                 }
             }
             anim.moving = true;
         } else {
-            // Quieto: mostrar frame de reposo (índice 1)
+            // Quieto: frame quieto (índice 1) y no actualizar tiempo
             anim.frame = 1;
             anim.moving = false;
-            anim.distanceAccum = 0;
+            // No reiniciamos lastAnimTime para que al retomar el movimiento la animación continúe desde donde estaba
         }
     }
 }
