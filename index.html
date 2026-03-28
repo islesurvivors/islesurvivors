@@ -75,7 +75,7 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
 }
 
-/* Control deslizante para velocidad de animación (segundos por frame) */
+/* Control deslizante ampliado: de 0.08 a 2 segundos */
 #animSpeedControl {
     position: fixed;
     bottom: 20px;
@@ -92,11 +92,11 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: auto;
 }
 #animSpeedControl input {
-    width: 150px;
+    width: 200px;
     cursor: pointer;
 }
 #animSpeedValue {
-    min-width: 45px;
+    min-width: 55px;
     text-align: center;
 }
 
@@ -166,9 +166,9 @@ canvas { display:block; cursor: crosshair; }
     🖱️ WASD o arrastrar | 💥 Colisión = combate automático
 </div>
 <div id="animSpeedControl">
-    <span>🎬 Frames cada:</span>
-    <input type="range" id="animSpeedSlider" min="0.08" max="0.4" step="0.01" value="0.2">
-    <span id="animSpeedValue">0.20 s</span>
+    <span>🎬 Duración por frame:</span>
+    <input type="range" id="animSpeedSlider" min="0.08" max="2.0" step="0.01" value="0.25">
+    <span id="animSpeedValue">0.25 s</span>
 </div>
 <div id="respawnMessage">
     <div id="respawnText">Reapareciendo en</div>
@@ -226,8 +226,8 @@ const DIRECTION_TO_ROW = {
     right: 3
 };
 
-// Animación por tiempo
-let animInterval = 0.8; // segundos por frame
+// Animación por tiempo (intervalo ajustable)
+let animInterval = 0.25; // segundos por frame (por defecto 0.25s)
 let lastFrameChangeTime = performance.now() / 1000;
 
 // Control deslizante
@@ -413,7 +413,7 @@ function updateAnimations() {
             } else {
                 // Misma dirección: actualizar frame cada 'animInterval' segundos
                 if (now - anim.lastFrameTime >= animInterval) {
-                    anim.frame = (anim.frame + 1) % 4;
+                    anim.frame = (anim.frame + 1) % 4;  // ciclo 0,1,2,3
                     anim.lastFrameTime = now;
                 }
             }
