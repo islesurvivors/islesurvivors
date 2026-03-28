@@ -442,95 +442,125 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    function updateAnimations() {
-        const now = performance.now() / 1000;
-        for (let id in players) {
-            const p = players[id];
-            if (!p.alive) continue;
+  function updateAnimations() {
+    const now = performance.now() / 1000;
+    
+    // Umbrales ajustados
+    const MOVEMENT_THRESHOLD = 0.5;
+    const DIRECTION_THRESHOLD = 2.0;
+    const IDLE_FRAMES_TO_STOP = 6;        // MOD: antes era 3
+    const DIRECTION_CONSISTENCY_FRAMES = 3; // MOD: frames necesarios para cambiar dirección (remotos)
 
-            const anim = playerAnim[id];
-            if (!anim) continue;
+    for (let id in players) {
+        const p = players[id];
+        if (!p.alive) continue;
 
-            const isLocal = (id === myId);
-            let newDirection = null;
-            let isMoving = false;
+        const anim = playerAnim[id];
+        if (!anim) continue;
 
-            if (isLocal) {
-                // Para el jugador local: usamos el input (teclas) para determinar dirección y movimiento
-                const hasInput = (input.dx !== 0 || input.dy !== 0);
-                if (hasInput) {
-                    isMoving = true;
-                    newDirection = getDirectionFromInput(input.dx, input.dy);
-                } else {
-                    isMoving = false;
-                }
-                // Actualizar última posición visual (necesaria para otros cálculos aunque no se use para dirección)
-                anim.lastVisualX = p.x;
-                anim.lastVisualY = p.y;
-            } else {
-                // Para otros jugadores: usamos desplazamiento visual como antes
-                const deltaX = p.x - anim.lastVisualX;
-                const deltaY = p.y - anim.lastVisualY;
-                const distance = Math.hypot(deltaX, deltaY);
-                anim.lastVisualX = p.x;
-                anim.lastVisualY = p.y;
+        // Calcular desplazamiento desde la última posición visual
+        const deltaX = p.x - anim.lastVisualX;
+        const deltaY = p.y - anim.lastVisualY;
+        const distance = Math.hypot(deltaX, deltaY);
+        
+        anim.lastVisualX = p.x;
+        anim.lastVisualY = p.y;
+        
+        const isMoving = distance > MOVEMENT_THRESHOLD;
 
-                const MOVEMENT_THRESHOLD = 0.5;
-                const DIRECTION_THRESHOLD = 2.0;
-                isMoving = distance > MOVEMENT_THRESHOLD;
-                if (distance > DIRECTION_THRESHOLD) {
-                    newDirection = getDirectionFromMovement(deltaX, deltaY);
-                }
-            }
-
-            // Manejo de idleCounter (para que no se corte la animación bruscamente)
-            if (isMoving) {
-                anim.idleCounter = 0;
-                if (!anim.moving) {
-                    // Recién empieza a moverse: iniciar ciclo de frames
-                    anim.moving = true;
-                    anim.frame = 0;
-                    anim.nextFrameTime = now + animInterval;
-                }
-            } else {
-                if (anim.moving) {
-                    anim.idleCounter++;
-                    if (anim.idleCounter >= 3) {
-                        anim.moving = false;
-                        anim.frame = 1; // frame idle
-                    }
-                }
-            }
-
-            // Actualizar dirección si hay una nueva y es diferente a la actual
-            if (newDirection !== null) {
-                const newRow = DIRECTION_TO_ROW[newDirection];
-                if (anim.directionRow !== newRow) {
-                    anim.directionRow = newRow;
-                    if (anim.moving) {
-                        // Cambio de dirección: reiniciar ciclo desde frame 0
-                        anim.frame = 0;
-                        anim.nextFrameTime = now + animInterval;
-                    }
-                }
-            }
-
-            // Avanzar frames si está en movimiento y ha pasado el tiempo
-            if (anim.moving && now >= anim.nextFrameTime) {
-                anim.frame = (anim.frame + 1) % 4;
+        // --- Gestión del estado moving (persistencia) ---
+        if (isMoving) {
+            anim.idleCounter = 0;
+            if (!anim.moving) {
+                anim.moving = true;
+                anim.frame = 0;
                 anim.nextFrameTime = now + animInterval;
             }
-
-            // Actualizar debug para el jugador local
-            if (isLocal) {
-                if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
-                if (timeToNextSpan) {
-                    const timeLeft = Math.max(0, anim.nextFrameTime - now);
-                    timeToNextSpan.innerText = timeLeft.toFixed(2);
+        } else {
+            if (anim.moving) {
+                anim.idleCounter++;
+                if (anim.idleCounter >= IDLE_FRAMES_TO_STOP) {
+                    anim.moving = false;
+                    anim.frame = 1; // idle frame
                 }
             }
         }
+
+        // --- Determinación de la dirección ---
+        let newDirection = null;
+        
+        if (id === myId) {
+            // Jugador local: usar la entrada de teclado (input)
+            // Si no hay entrada, no cambiamos dirección (se mantiene la última)
+            if (input.dx !== 0 || input.dy !== 0) {
+                // 'input' tiene dx,dy normalizados; calculamos dirección igual que antes
+                if (Math.abs(input.dx) > Math.abs(input.dy)) {
+                    newDirection = input.dx > 0 ? 'right' : 'left';
+                } else if (Math.abs(input.dy) > 0) {
+                    newDirection = input.dy > 0 ? 'down' : 'up';
+                }
+            }
+        } else {
+            // Jugadores remotos: usar el movimiento, pero con filtro de cambios bruscos
+            if (distance > DIRECTION_THRESHOLD) {
+                const candidateDir = getDirectionFromMovement(deltaX, deltaY);
+                if (candidateDir) {
+                    // Inicializar buffer si no existe
+                    if (!anim.dirBuffer) {
+                        anim.dirBuffer = [];
+                        anim.dirBufferConsistent = false;
+                    }
+                    // Guardar dirección candidata en buffer circular
+                    anim.dirBuffer.push(candidateDir);
+                    if (anim.dirBuffer.length > DIRECTION_CONSISTENCY_FRAMES) {
+                        anim.dirBuffer.shift();
+                    }
+                    // Verificar si todas las entradas del buffer son iguales
+                    const allSame = anim.dirBuffer.length === DIRECTION_CONSISTENCY_FRAMES &&
+                                    anim.dirBuffer.every(dir => dir === candidateDir);
+                    if (allSame && !anim.dirBufferConsistent) {
+                        anim.dirBufferConsistent = true;
+                        newDirection = candidateDir;
+                    } else if (!allSame) {
+                        anim.dirBufferConsistent = false;
+                    }
+                }
+            } else {
+                // Reiniciamos el buffer si no hay movimiento claro
+                if (anim.dirBuffer) anim.dirBuffer = [];
+                anim.dirBufferConsistent = false;
+            }
+        }
+
+        // Aplicar cambio de dirección si corresponde
+        if (newDirection) {
+            const newRow = DIRECTION_TO_ROW[newDirection];
+            if (anim.directionRow !== newRow) {
+                anim.directionRow = newRow;
+                if (anim.moving) {
+                    // Solo reiniciamos frame si realmente estábamos moviéndonos
+                    anim.frame = 0;
+                    anim.nextFrameTime = now + animInterval;
+                }
+            }
+        }
+
+        // --- Avance del ciclo de frames (sin cambios) ---
+        if (anim.moving && now >= anim.nextFrameTime) {
+            anim.frame = (anim.frame + 1) % 4;
+            anim.nextFrameTime = now + animInterval;
+        }
+
+        // Actualizar debug para jugador local
+        if (id === myId) {
+            if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
+            if (timeToNextSpan) {
+                const timeLeft = Math.max(0, anim.nextFrameTime - now);
+                timeToNextSpan.innerText = timeLeft.toFixed(2);
+            }
+        }
     }
+}
 
     function drawGround(camX, camY) {
         ctx.fillStyle = "#e0b05a";
