@@ -166,6 +166,34 @@ let deathTime = null;
 let pingHistory = [];
 const PING_HISTORY_LEN = 5;
 
+// ========== CONFIGURACIÓN DEL SPRITE ==========
+const SPRITE_URL = "ch003.png";
+const TILE_SIZE = 128;        // px (cada frame)
+const SPRITE_SCALE = 0.375;   // 48px de ancho/alto final
+const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
+const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
+
+let spriteSheet = new Image();
+let spriteLoaded = false;
+spriteSheet.onload = () => {
+    spriteLoaded = true;
+    console.log("Sprite sheet cargado correctamente");
+};
+spriteSheet.src = SPRITE_URL;
+
+// Mapeo de dirección a fila en el sprite sheet
+// 0 = arriba (W), 1 = abajo (S), 2 = izquierda (A), 3 = derecha (D)
+const DIRECTION_TO_ROW = {
+    up: 0,
+    down: 1,
+    left: 2,
+    right: 3
+};
+
+// Animación por jugador
+let playerAnim = {}; // { [id]: { frame, lastChange, directionRow, moving } }
+
+// ========== FUNCIONES AUXILIARES ==========
 function getPlayerColor(id, isMe, serverColor) {
     if (isMe) return "#88ff88";
     if (serverColor) return serverColor;
@@ -185,6 +213,7 @@ function resize() {
 resize();
 window.addEventListener("resize", resize);
 
+// ========== WEBSOCKET ==========
 const ws = new WebSocket(location.origin.replace("http", "ws"));
 
 ws.onmessage = (msg) => {
@@ -209,7 +238,7 @@ ws.onmessage = (msg) => {
         
         if (data.timestamp) {
             let rawPing = Date.now() - data.timestamp;
-            if (rawPing < 0) rawPing = 0; // nunca negativo
+            if (rawPing < 0) rawPing = 0;
             pingHistory.push(rawPing);
             if (pingHistory.length > PING_HISTORY_LEN) pingHistory.shift();
             const avgPing = Math.round(pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length);
@@ -236,7 +265,7 @@ function showDamageNumber(damage, isMe, targetId) {
     setTimeout(() => div.remove(), 800);
 }
 
-// Controles
+// ========== CONTROLES ==========
 document.addEventListener("keydown", (e) => {
     if (e.key === "w") input.dy = -1;
     if (e.key === "s") input.dy = 1;
@@ -272,11 +301,21 @@ setInterval(() => {
     }
 }, 30);
 
+// ========== INTERPOLACIÓN Y ANIMACIÓN ==========
 function interpolateAll() {
     for (let id in serverPlayers) {
         const sp = serverPlayers[id];
         if (!players[id]) {
             players[id] = { ...sp };
+            // Inicializar animación
+            playerAnim[id] = {
+                frame: 0,
+                lastChange: performance.now() / 1000,
+                directionRow: 0, // por defecto abajo
+                moving: false,
+                lastX: sp.x,
+                lastY: sp.y
+            };
         } else {
             players[id].x += (sp.x - players[id].x) * 0.7;
             players[id].y += (sp.y - players[id].y) * 0.7;
@@ -288,6 +327,98 @@ function interpolateAll() {
     }
 }
 
+// Determina la dirección basada en el movimiento (dx, dy)
+function getDirectionFromMovement(dx, dy) {
+    if (Math.abs(dx) > Math.abs(dy)) {
+        return dx > 0 ? 'right' : 'left';
+    } else if (Math.abs(dy) > 0) {
+        return dy > 0 ? 'down' : 'up';
+    }
+    return null; // sin movimiento
+}
+
+// Actualiza la animación de todos los jugadores
+function updateAnimations() {
+    const now = performance.now() / 1000;
+    const ANIM_INTERVAL = 0.2; // segundos entre cambios de frame
+
+    for (let id in players) {
+        const p = players[id];
+        if (!p.alive) continue;
+
+        let moving = false;
+        let direction = null;
+        let dx = 0, dy = 0;
+
+        if (id === myId) {
+            // Jugador local: usa input
+            dx = input.dx;
+            dy = input.dy;
+            direction = getDirectionFromMovement(dx, dy);
+            moving = (dx !== 0 || dy !== 0);
+        } else {
+            // Jugador remoto: calcula dirección a partir del cambio de posición
+            const anim = playerAnim[id];
+            if (anim) {
+                const deltaX = p.x - anim.lastX;
+                const deltaY = p.y - anim.lastY;
+                const speed = Math.hypot(deltaX, deltaY);
+                if (speed > 1) {
+                    moving = true;
+                    direction = getDirectionFromMovement(deltaX, deltaY);
+                } else {
+                    moving = false;
+                }
+                // Actualizar última posición para la próxima iteración
+                anim.lastX = p.x;
+                anim.lastY = p.y;
+            } else {
+                // Si no hay anim, crear una
+                playerAnim[id] = {
+                    frame: 0,
+                    lastChange: now,
+                    directionRow: 0,
+                    moving: false,
+                    lastX: p.x,
+                    lastY: p.y
+                };
+                continue;
+            }
+        }
+
+        const anim = playerAnim[id];
+        if (!anim) continue;
+
+        // Si está moviéndose
+        if (moving && direction) {
+            const newRow = DIRECTION_TO_ROW[direction];
+            // Cambiar de fila si la dirección cambió
+            if (anim.directionRow !== newRow) {
+                anim.directionRow = newRow;
+                anim.frame = Math.floor(Math.random() * 4); // frame aleatorio al cambiar dirección
+                anim.lastChange = now;
+            } else {
+                // Si ha pasado el intervalo, cambiar a un frame aleatorio (0-3)
+                if (now - anim.lastChange >= ANIM_INTERVAL) {
+                    let newFrame;
+                    do {
+                        newFrame = Math.floor(Math.random() * 4);
+                    } while (newFrame === anim.frame && Math.random() < 0.7); // evita repetir consecutivo con cierta probabilidad
+                    anim.frame = newFrame;
+                    anim.lastChange = now;
+                }
+            }
+            anim.moving = true;
+        } else {
+            // No se mueve: resetear frame a 0 (quieto)
+            anim.frame = 0;
+            anim.moving = false;
+            // Opcional: mantener la última dirección para que al detenerse muestre el primer frame de esa fila
+        }
+    }
+}
+
+// ========== DIBUJADO ==========
 function drawGround(camX, camY) {
     ctx.fillStyle = "#e0b05a";
     ctx.fillRect(camX, camY, canvas.width, canvas.height);
@@ -338,33 +469,54 @@ function draw() {
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
-        const isMe = (id === myId);
-        const radius = 14;
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = "rgba(0,0,0,0.5)";
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = getPlayerColor(id, isMe, p.color);
-        ctx.fill();
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 2;
-        ctx.stroke();
         
-        // Barra de vida
+        const isMe = (id === myId);
+        const anim = playerAnim[id] || { frame: 0, directionRow: 0 };
+        
+        // Determinar fila según la dirección que tenga guardada
+        let row = anim.directionRow;
+        // Si no se está moviendo, usar la última fila (o la de abajo por defecto)
+        if (!anim.moving) {
+            // Podríamos mantener la fila, pero a veces se queda en la última dirección
+            // Si no hay movimiento, usamos la fila actual (así se ve quieto con la dirección anterior)
+        }
+        
+        const frameCol = anim.frame;
+        
+        // Dibujar sprite si está cargado, si no, un círculo de respaldo
+        if (spriteLoaded) {
+            ctx.drawImage(
+                spriteSheet,
+                frameCol * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE,
+                p.x - SPRITE_W/2, p.y - SPRITE_H/2, SPRITE_W, SPRITE_H
+            );
+        } else {
+            // Fallback: círculo
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+            ctx.fillStyle = getPlayerColor(id, isMe, p.color);
+            ctx.fill();
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+        
+        // Barra de vida (siempre encima del sprite)
         const healthPercent = p.health / 100;
         const barWidth = 30;
         const barHeight = 6;
         const barX = p.x - barWidth / 2;
-        const barY = p.y - radius - 10;
+        const barY = p.y - SPRITE_H/2 - 10;
         ctx.fillStyle = "#333";
         ctx.fillRect(barX, barY, barWidth, barHeight);
         ctx.fillStyle = "#ff3333";
         ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
         
-        ctx.shadowBlur = 0;
+        // Nombre
         ctx.font = "12px Arial";
         ctx.fillStyle = "white";
-        ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - radius - 12);
+        ctx.shadowBlur = 2;
+        ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 12);
         
         // Cooldown local
         if (isMe && lastAttackTime) {
@@ -372,7 +524,7 @@ function draw() {
             const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
             if (cooldownRemaining > 0) {
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, radius + 3, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
+                ctx.arc(p.x, p.y, SPRITE_W/2 + 3, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
                 ctx.strokeStyle = "#ffaa44";
                 ctx.lineWidth = 3;
                 ctx.stroke();
@@ -392,7 +544,7 @@ function draw() {
     }
 }
 
-// Control del mensaje de respawn con contador
+// ========== RESPAWN ==========
 function updateRespawnMessage() {
     const localPlayer = players[myId];
     const msgDiv = document.getElementById('respawnMessage');
@@ -412,9 +564,11 @@ function updateRespawnMessage() {
     }
 }
 
+// ========== LOOP PRINCIPAL ==========
 function gameLoop() {
     requestAnimationFrame(gameLoop);
     interpolateAll();
+    updateAnimations();
     draw();
     updateRespawnMessage();
 }
