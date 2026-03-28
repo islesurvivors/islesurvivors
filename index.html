@@ -205,7 +205,6 @@ canvas { display:block; cursor: crosshair; }
     let lastAttackTime = 0;
     let attackCooldown = 0.8;
 
-    // Estado individual de cada tecla de movimiento (fix opuestos)
     const keyState = {
         w: false,
         s: false,
@@ -231,7 +230,6 @@ canvas { display:block; cursor: crosshair; }
         else if (key === 'd') { keyState.d = true; changed = true; e.preventDefault(); }
         if (changed) {
             updateInputFromKeys();
-            // Al usar teclado, desactivamos el modo táctil para la dirección
             isTouchInput = false;
         }
     }
@@ -261,7 +259,7 @@ canvas { display:block; cursor: crosshair; }
     const TOTAL_IMAGE_SIZE = 128;
     const TILES_PER_ROW = 4;
     const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW;
-    const SPRITE_SCALE = 48 / TILE_SIZE;
+    const SPRITE_SCALE = 28 / TILE_SIZE;
     const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
     const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
     const CROP_LEFT = 0;
@@ -295,7 +293,6 @@ canvas { display:block; cursor: crosshair; }
     const currentFrameSpan = document.getElementById('currentFrame');
     const timeToNextSpan = document.getElementById('timeToNext');
 
-    // Variable para saber si la entrada actual es táctil (mobile) o teclado
     let isTouchInput = false;
 
     function getPlayerColor(id, isMe, serverColor) {
@@ -369,13 +366,12 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
-    // Touch handlers modificados para activar el modo táctil
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
-        isTouchInput = true; // Activamos modo táctil
+        isTouchInput = true;
     });
     canvas.addEventListener("touchmove", (e) => {
         e.preventDefault();
@@ -385,14 +381,13 @@ canvas { display:block; cursor: crosshair; }
         input.dx = dx / mag;
         input.dy = dy / mag;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
-        isTouchInput = true; // Mantenemos modo táctil durante el movimiento
+        isTouchInput = true;
     });
     canvas.addEventListener("touchend", (e) => {
         e.preventDefault();
         input.dx = 0;
         input.dy = 0;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
-        // No cambiamos isTouchInput aquí para que la última dirección táctil se mantenga en el idle
     });
 
     setInterval(() => {
@@ -426,17 +421,14 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    // Función de dirección modificada: dos modos según isTouchInput
     function getDirectionFromMovement(dx, dy) {
         if (isTouchInput) {
-            // Modo táctil: eje dominante (más natural para arrastre)
             if (Math.abs(dx) > Math.abs(dy)) {
                 return dx > 0 ? 'right' : 'left';
             } else if (Math.abs(dy) > 0.01) {
                 return dy > 0 ? 'down' : 'up';
             }
         } else {
-            // Modo teclado: prioridad vertical (para diagonales con teclas)
             if (Math.abs(dy) > 0.01) {
                 return dy > 0 ? 'down' : 'up';
             }
@@ -485,7 +477,6 @@ canvas { display:block; cursor: crosshair; }
                 }
             }
             
-            // Cambio de dirección solo si el desplazamiento supera el umbral
             if (distance > DIRECTION_THRESHOLD) {
                 const direction = getDirectionFromMovement(deltaX, deltaY);
                 if (direction) {
@@ -555,6 +546,9 @@ canvas { display:block; cursor: crosshair; }
         ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
         ctx.stroke();
         
+        const barWidth = 26;
+        const barHeight = 6;
+        
         for (let id in players) {
             const p = players[id];
             if (!p.alive) continue;
@@ -573,7 +567,7 @@ canvas { display:block; cursor: crosshair; }
                 ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, SPRITE_W, SPRITE_H);
             } else {
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+                ctx.arc(p.x, p.y, SPRITE_W/2, 0, Math.PI * 2);
                 ctx.fillStyle = getPlayerColor(id, isMe, p.color);
                 ctx.fill();
                 ctx.strokeStyle = "#fff";
@@ -582,8 +576,6 @@ canvas { display:block; cursor: crosshair; }
             }
             
             const healthPercent = p.health / 100;
-            const barWidth = 30;
-            const barHeight = 6;
             const barX = p.x - barWidth / 2;
             const barY = p.y - SPRITE_H/2 - 10;
             ctx.fillStyle = "#333";
@@ -601,7 +593,7 @@ canvas { display:block; cursor: crosshair; }
                 const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
                 if (cooldownRemaining > 0) {
                     ctx.beginPath();
-                    ctx.arc(p.x, p.y, SPRITE_W/2 + 3, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
+                    ctx.arc(p.x, p.y, SPRITE_W/2 + 2, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
                     ctx.strokeStyle = "#ffaa44";
                     ctx.lineWidth = 3;
                     ctx.stroke();
