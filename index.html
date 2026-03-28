@@ -205,8 +205,7 @@ canvas { display:block; cursor: crosshair; }
     let lastAttackTime = 0;
     let attackCooldown = 0.8;
 
-    // --- INPUT FIX: Manejo de teclas opuestas sin cancelaciones bruscas ---
-    // Estado individual de cada tecla de movimiento
+    // Estado individual de cada tecla de movimiento (fix opuestos)
     const keyState = {
         w: false,
         s: false,
@@ -214,88 +213,43 @@ canvas { display:block; cursor: crosshair; }
         d: false
     };
     
-    // Vector de movimiento neto resultante
     let input = { dx: 0, dy: 0 };
     
-    // Función que recalcula el movimiento neto según las teclas presionadas
     function updateInputFromKeys() {
-        // Eje X: derecha (d) menos izquierda (a)
         let rawDx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
-        // Eje Y: abajo (s) menos arriba (w) -> NOTA: w = -1 (arriba), s = +1 (abajo)
         let rawDy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
-        
-        // Asignar valores normalizados (-1, 0, 1) exactamente igual que antes
         input.dx = rawDx;
         input.dy = rawDy;
     }
     
-    // Prevenir scroll con teclas WASD y actualizar estado
     function handleKeyDown(e) {
         const key = e.key;
         let changed = false;
-        
-        if (key === 'w') {
-            keyState.w = true;
-            changed = true;
-            e.preventDefault();
-        } else if (key === 's') {
-            keyState.s = true;
-            changed = true;
-            e.preventDefault();
-        } else if (key === 'a') {
-            keyState.a = true;
-            changed = true;
-            e.preventDefault();
-        } else if (key === 'd') {
-            keyState.d = true;
-            changed = true;
-            e.preventDefault();
-        }
-        
-        if (changed) {
-            updateInputFromKeys();
-        }
+        if (key === 'w') { keyState.w = true; changed = true; e.preventDefault(); }
+        else if (key === 's') { keyState.s = true; changed = true; e.preventDefault(); }
+        else if (key === 'a') { keyState.a = true; changed = true; e.preventDefault(); }
+        else if (key === 'd') { keyState.d = true; changed = true; e.preventDefault(); }
+        if (changed) updateInputFromKeys();
     }
     
     function handleKeyUp(e) {
         const key = e.key;
         let changed = false;
-        
-        if (key === 'w') {
-            keyState.w = false;
-            changed = true;
-            e.preventDefault();
-        } else if (key === 's') {
-            keyState.s = false;
-            changed = true;
-            e.preventDefault();
-        } else if (key === 'a') {
-            keyState.a = false;
-            changed = true;
-            e.preventDefault();
-        } else if (key === 'd') {
-            keyState.d = false;
-            changed = true;
-            e.preventDefault();
-        }
-        
-        if (changed) {
-            updateInputFromKeys();
-        }
+        if (key === 'w') { keyState.w = false; changed = true; e.preventDefault(); }
+        else if (key === 's') { keyState.s = false; changed = true; e.preventDefault(); }
+        else if (key === 'a') { keyState.a = false; changed = true; e.preventDefault(); }
+        else if (key === 'd') { keyState.d = false; changed = true; e.preventDefault(); }
+        if (changed) updateInputFromKeys();
     }
     
-    // Reemplazar los listeners antiguos por los nuevos con estado de teclas
     document.removeEventListener("keydown", window._oldKeyDown);
     document.removeEventListener("keyup", window._oldKeyUp);
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
-    // Guardar referencia por si acaso (no es necesario, pero limpio)
     window._oldKeyDown = handleKeyDown;
     window._oldKeyUp = handleKeyUp;
-    // -----------------------------------------------------------------
     
     let deathTime = null;
-
     let pingHistory = [];
     const PING_HISTORY_LEN = 5;
 
@@ -303,11 +257,9 @@ canvas { display:block; cursor: crosshair; }
     const TOTAL_IMAGE_SIZE = 128;
     const TILES_PER_ROW = 4;
     const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW;
-
     const SPRITE_SCALE = 48 / TILE_SIZE;
     const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
     const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
-
     const CROP_LEFT = 0;
     const CROP_TOP = 0;
     const CROP_WIDTH = TILE_SIZE - CROP_LEFT;
@@ -326,7 +278,6 @@ canvas { display:block; cursor: crosshair; }
     };
 
     let animInterval = 0.25;
-
     const slider = document.getElementById('animSpeedSlider');
     const speedValue = document.getElementById('animSpeedValue');
     if (slider && speedValue) {
@@ -337,7 +288,6 @@ canvas { display:block; cursor: crosshair; }
     }
 
     let playerAnim = {};
-
     const currentFrameSpan = document.getElementById('currentFrame');
     const timeToNextSpan = document.getElementById('timeToNext');
 
@@ -364,7 +314,6 @@ canvas { display:block; cursor: crosshair; }
 
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
-        
         if (data.type === 'init') {
             myId = data.id;
         }
@@ -372,7 +321,6 @@ canvas { display:block; cursor: crosshair; }
             serverPlayers = data.players;
             zone = data.zone;
             aliveCount = data.aliveCount;
-            
             if (myId && serverPlayers[myId]) {
                 localPlayerHealth = serverPlayers[myId].health;
                 const percent = Math.max(0, (localPlayerHealth / 100) * 100);
@@ -384,7 +332,6 @@ canvas { display:block; cursor: crosshair; }
             }
             const aliveCountSpan = document.getElementById('aliveCount');
             if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
-            
             if (data.timestamp) {
                 let rawPing = Date.now() - data.timestamp;
                 if (rawPing < 0) rawPing = 0;
@@ -415,7 +362,7 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
-    // --- Touch handlers (sin cambios, funcionan igual) ---
+    // Touch (mantiene comportamiento original)
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
@@ -427,10 +374,8 @@ canvas { display:block; cursor: crosshair; }
         let dx = e.touches[0].clientX - startX;
         let dy = e.touches[0].clientY - startY;
         let mag = Math.hypot(dx, dy) || 1;
-        // El touch sobrescribe completamente el input (comportamiento original)
         input.dx = dx / mag;
         input.dy = dy / mag;
-        // También reseteamos el estado de teclas para no mezclar inputs si se usa touch
         keyState.w = keyState.s = keyState.a = keyState.d = false;
     });
     canvas.addEventListener("touchend", (e) => {
@@ -439,7 +384,6 @@ canvas { display:block; cursor: crosshair; }
         input.dy = 0;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
     });
-    // -----------------------------------------------------------------
 
     setInterval(() => {
         if (ws.readyState === 1 && myId) {
@@ -472,14 +416,20 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
+    // ========== NUEVA LÓGICA DE DIRECCIÓN: PRIORIDAD VERTICAL ==========
+    // Para diagonales se usa arriba o abajo, no izquierda/derecha.
     function getDirectionFromMovement(dx, dy) {
-        if (Math.abs(dx) > Math.abs(dy)) {
-            return dx > 0 ? 'right' : 'left';
-        } else if (Math.abs(dy) > 0) {
+        // Si hay movimiento vertical significativo (dy no es cero), priorizamos arriba/abajo
+        if (Math.abs(dy) > 0.01) {
             return dy > 0 ? 'down' : 'up';
+        }
+        // Si no, movimiento horizontal puro
+        if (Math.abs(dx) > 0.01) {
+            return dx > 0 ? 'right' : 'left';
         }
         return null;
     }
+    // ================================================================
 
     function updateAnimations() {
         const now = performance.now() / 1000;
@@ -519,6 +469,7 @@ canvas { display:block; cursor: crosshair; }
                 }
             }
             
+            // Cambio de dirección solo si el desplazamiento supera el umbral
             if (distance > DIRECTION_THRESHOLD) {
                 const direction = getDirectionFromMovement(deltaX, deltaY);
                 if (direction) {
@@ -551,11 +502,9 @@ canvas { display:block; cursor: crosshair; }
     function drawGround(camX, camY) {
         ctx.fillStyle = "#e0b05a";
         ctx.fillRect(camX, camY, canvas.width, canvas.height);
-        
         const gridSpacing = 80;
         const startX = Math.floor(camX / gridSpacing) * gridSpacing;
         const startY = Math.floor(camY / gridSpacing) * gridSpacing;
-        
         ctx.fillStyle = "#c99a3a";
         for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
             for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
@@ -568,7 +517,6 @@ canvas { display:block; cursor: crosshair; }
 
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
         const localPlayer = players[myId];
         if (!localPlayer) return;
         
@@ -577,7 +525,6 @@ canvas { display:block; cursor: crosshair; }
         
         ctx.save();
         ctx.translate(-camX, -camY);
-        
         drawGround(camX, camY);
         
         ctx.beginPath();
@@ -587,7 +534,6 @@ canvas { display:block; cursor: crosshair; }
         ctx.strokeStyle = "rgba(0, 200, 255, 0.9)";
         ctx.lineWidth = 4;
         ctx.stroke();
-        
         ctx.beginPath();
         ctx.arc(zone.x, zone.y, zone.radius + 5, 0, Math.PI * 2);
         ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
@@ -596,10 +542,8 @@ canvas { display:block; cursor: crosshair; }
         for (let id in players) {
             const p = players[id];
             if (!p.alive) continue;
-            
             const isMe = (id === myId);
             const anim = playerAnim[id] || { frame: 1, directionRow: 0 };
-            
             const row = anim.directionRow;
             const frameCol = anim.frame;
             
@@ -648,7 +592,6 @@ canvas { display:block; cursor: crosshair; }
                 }
             }
         }
-        
         ctx.restore();
         
         ctx.font = "bold 14px monospace";
@@ -665,9 +608,7 @@ canvas { display:block; cursor: crosshair; }
         const localPlayer = players[myId];
         const msgDiv = document.getElementById('respawnMessage');
         const countdownSpan = document.getElementById('respawnCountdown');
-        
         if (!localPlayer) return;
-        
         if (!localPlayer.alive) {
             if (deathTime === null) deathTime = Date.now();
             const elapsed = (Date.now() - deathTime) / 1000;
