@@ -431,7 +431,6 @@ function updateAnimations() {
                 anim.directionRow = newRow;
                 anim.frame = 0;
                 anim.nextFrameTime = now + animInterval;
-                // (opcional) log para debug
                 if (id === myId) console.log(`Cambio dirección a ${direction}, frame=0`);
             } else {
                 // Misma dirección: si es hora de cambiar frame
@@ -443,11 +442,11 @@ function updateAnimations() {
             }
             anim.moving = true;
         } else {
-            // Quieto: mostrar frame quieto (1) y no avanzar el temporizador
+            // Quieto: mostrar frame quieto (1) PERO NO TOCAR nextFrameTime
+            // Solo cambiamos el frame visual; el temporizador sigue igual para cuando vuelva a moverse.
             anim.frame = 1;
             anim.moving = false;
-            // Reseteamos el próximo cambio para cuando vuelva a moverse, el frame 0 dure su intervalo
-            anim.nextFrameTime = now + animInterval;
+            // Nota: nextFrameTime NO se modifica aquí.
         }
 
         // Actualizar debug para jugador local
