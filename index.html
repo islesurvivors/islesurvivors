@@ -100,6 +100,21 @@ canvas { display:block; cursor: crosshair; }
     text-align: center;
 }
 
+/* Indicador de animación (debug) */
+#debugAnim {
+    position: fixed;
+    bottom: 80px;
+    left: 20px;
+    background: rgba(0,0,0,0.7);
+    padding: 4px 10px;
+    border-radius: 8px;
+    color: #ffaa44;
+    font-family: monospace;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 20;
+}
+
 .damageNumber {
     position: absolute;
     font-weight: bold;
@@ -169,6 +184,9 @@ canvas { display:block; cursor: crosshair; }
     <span>🎬 Duración por frame:</span>
     <input type="range" id="animSpeedSlider" min="0.08" max="2.0" step="0.01" value="0.25">
     <span id="animSpeedValue">0.25 s</span>
+</div>
+<div id="debugAnim">
+    Frame actual: <span id="currentFrame">1</span> | Próximo cambio en <span id="timeToNext">0.00</span> s
 </div>
 <div id="respawnMessage">
     <div id="respawnText">Reapareciendo en</div>
@@ -240,6 +258,10 @@ slider.addEventListener('input', (e) => {
 
 // Animación por jugador
 let playerAnim = {}; // { [id]: { frame, directionRow, moving, lastVisualX, lastVisualY, lastFrameTime } }
+
+// Elementos del debug
+const currentFrameSpan = document.getElementById('currentFrame');
+const timeToNextSpan = document.getElementById('timeToNext');
 
 // ========== FUNCIONES AUXILIARES ==========
 function getPlayerColor(id, isMe, serverColor) {
@@ -423,6 +445,13 @@ function updateAnimations() {
             anim.frame = 1;
             anim.moving = false;
             // No reseteamos el temporizador para que al retomar el movimiento la animación continúe desde donde estaba
+        }
+
+        // Actualizar el debug SOLO para el jugador local
+        if (id === myId) {
+            currentFrameSpan.innerText = anim.frame;
+            const timeLeft = Math.max(0, animInterval - (now - anim.lastFrameTime));
+            timeToNextSpan.innerText = timeLeft.toFixed(2);
         }
     }
 }
