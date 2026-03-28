@@ -347,63 +347,22 @@ function updateAnimations() {
         const p = players[id];
         if (!p.alive) continue;
 
-        let moving = false;
-        let direction = null;
-        let dx = 0, dy = 0;
-
-        // Determinamos movimiento y dirección
-        if (id === myId) {
-            dx = input.dx;
-            dy = input.dy;
-            direction = getDirectionFromMovement(dx, dy);
-            moving = (dx !== 0 || dy !== 0);
-        } else {
-            // Jugadores remotos: usamos el cambio visual
-            const anim = playerAnim[id];
-            if (anim) {
-                const deltaX = p.x - anim.lastVisualX;
-                const deltaY = p.y - anim.lastVisualY;
-                const speed = Math.hypot(deltaX, deltaY);
-                if (speed > 0.5) {
-                    moving = true;
-                    direction = getDirectionFromMovement(deltaX, deltaY);
-                } else {
-                    moving = false;
-                }
-                // Guardar posición visual para la próxima iteración
-                anim.lastVisualX = p.x;
-                anim.lastVisualY = p.y;
-            } else {
-                playerAnim[id] = {
-                    frame: 1,
-                    directionRow: 0,
-                    moving: false,
-                    lastVisualX: p.x,
-                    lastVisualY: p.y,
-                    distanceAccum: 0
-                };
-                continue;
-            }
-        }
-
         const anim = playerAnim[id];
         if (!anim) continue;
 
-        // Calcular distancia recorrida desde el último cambio de frame
-        let distance = 0;
-        if (anim.lastVisualX !== undefined && (id !== myId || moving)) {
-            const dxVis = p.x - anim.lastVisualX;
-            const dyVis = p.y - anim.lastVisualY;
-            distance = Math.hypot(dxVis, dyVis);
-        }
-        // Actualizar posición visual para la próxima iteración (si es remoto ya se hizo)
-        if (id === myId) {
-            anim.lastVisualX = p.x;
-            anim.lastVisualY = p.y;
-        }
+        // Calcular desplazamiento visual desde la última posición guardada
+        const deltaX = p.x - anim.lastVisualX;
+        const deltaY = p.y - anim.lastVisualY;
+        const distance = Math.hypot(deltaX, deltaY);
+        
+        let moving = distance > 0.5; // umbral mínimo para considerar movimiento
+        let direction = moving ? getDirectionFromMovement(deltaX, deltaY) : null;
+
+        // Actualizar la última posición visual para la próxima iteración
+        anim.lastVisualX = p.x;
+        anim.lastVisualY = p.y;
 
         if (moving && direction) {
-            anim.moving = true;
             const newRow = DIRECTION_TO_ROW[direction];
             if (anim.directionRow !== newRow) {
                 // Cambio de dirección: nuevo frame aleatorio, reiniciar acumulador
@@ -422,11 +381,13 @@ function updateAnimations() {
                     anim.distanceAccum = 0;
                 }
             }
+            anim.moving = true;
         } else {
             // No se mueve: frame quieto y reiniciar acumulador
             anim.frame = 1;
             anim.moving = false;
             anim.distanceAccum = 0;
+            // La dirección (directionRow) se mantiene, para que al detenerse conserve la última orientación
         }
     }
 }
