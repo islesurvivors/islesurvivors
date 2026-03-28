@@ -164,7 +164,7 @@ let deathTime = null;
 let pingHistory = [];
 const PING_HISTORY_LEN = 5;
 
-// ========== CONFIGURACIÓN DEL SPRITE (AJUSTABLE) ==========
+// ========== CONFIGURACIÓN DEL SPRITE ==========
 const SPRITE_URL = "ch003.png";
 const TOTAL_IMAGE_SIZE = 128;      // imagen completa 128x128
 const TILES_PER_ROW = 4;            // 4x4 grid
@@ -174,12 +174,11 @@ const SPRITE_SCALE = 48 / TILE_SIZE; // 1.5 → 48px final
 const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
 const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
 
-// Recorte para eliminar bordes no deseados (si es necesario)
-// Si el sprite tiene márgenes, ajusta estos valores. Ahora están a 0.
-const CROP_LEFT = 0;    // píxeles a recortar desde la izquierda
-const CROP_TOP = 0;     // píxeles a recortar desde arriba
-const CROP_WIDTH = TILE_SIZE - CROP_LEFT;   // ancho útil
-const CROP_HEIGHT = TILE_SIZE - CROP_TOP;   // alto útil
+// Recortes (0 si no hay bordes)
+const CROP_LEFT = 0;
+const CROP_TOP = 0;
+const CROP_WIDTH = TILE_SIZE - CROP_LEFT;
+const CROP_HEIGHT = TILE_SIZE - CROP_TOP;
 
 let spriteSheet = new Image();
 let spriteLoaded = false;
@@ -197,8 +196,11 @@ const DIRECTION_TO_ROW = {
     right: 3
 };
 
-// Distancia en píxeles para cambiar de frame (ajústalo para mayor fluidez)
-const DIST_PER_FRAME = 8;  // antes 12 → ahora más fluido
+// ===== AJUSTA ESTE VALOR PARA CAMBIAR LA VELOCIDAD DE ANIMACIÓN =====
+// Mayor número = animación más lenta, menor = más rápida.
+// Recomendado: entre 10 y 18 para un movimiento natural.
+const DIST_PER_FRAME = 14;  // antes 8, ahora más lento para mayor fluidez
+// ====================================================================
 
 // Animación por jugador
 let playerAnim = {};
