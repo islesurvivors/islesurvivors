@@ -75,7 +75,6 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
 }
 
-/* Control deslizante para velocidad de animación */
 #animSpeedControl {
     position: fixed;
     bottom: 20px;
@@ -227,8 +226,7 @@ const DIRECTION_TO_ROW = {
 };
 
 // Variables para la animación por tiempo
-let animInterval = 0.8; // segundos entre frames (más lento para mayor fluidez)
-let lastAnimUpdate = performance.now() / 1000;
+let animInterval = 0.3; // segundos entre cambios de frame (más lento para mayor fluidez)
 
 // Control deslizante
 const slider = document.getElementById('animSpeedSlider');
@@ -355,7 +353,7 @@ function interpolateAll() {
         if (!players[id]) {
             players[id] = { ...sp };
             playerAnim[id] = {
-                frame: 1,
+                frame: 1,                // frame quieto (índice 1)
                 directionRow: 0,
                 moving: false,
                 lastVisualX: sp.x,
@@ -406,14 +404,15 @@ function updateAnimations() {
         if (moving && direction) {
             const newRow = DIRECTION_TO_ROW[direction];
             if (anim.directionRow !== newRow) {
-                // Cambio de dirección: reiniciar frame al inicio y tiempo
+                // Cambio de dirección: reiniciar frame al primero de movimiento (0) y tiempo
                 anim.directionRow = newRow;
-                anim.frame = 0;
+                anim.frame = 0;               // primer frame de caminata
                 anim.lastAnimTime = now;
             } else {
-                // Misma dirección: actualizar frame cada 'animInterval' segundos
+                // Misma dirección: alternar entre frames 0 y 2 (índices 0 y 2) cada intervalo
                 if (now - anim.lastAnimTime >= animInterval) {
-                    anim.frame = (anim.frame + 1) % 4;
+                    // Si frame actual es 0, pasa a 2; si es 2, pasa a 0
+                    anim.frame = (anim.frame === 0) ? 2 : 0;
                     anim.lastAnimTime = now;
                 }
             }
