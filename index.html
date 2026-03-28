@@ -419,18 +419,23 @@ canvas { display:block; cursor: crosshair; }
             let direction = null;
 
             if (id === myId) {
-                // Jugador local: la dirección se basa en el INPUT (más estable)
-                moving = (input.dx !== 0 || input.dy !== 0);
+                // Jugador local: basado en desplazamiento visual con umbral para evitar ruido
+                const deltaX = p.x - anim.lastVisualX;
+                const deltaY = p.y - anim.lastVisualY;
+                const distance = Math.hypot(deltaX, deltaY);
+                
+                // Umbral de movimiento mínimo (2 píxeles) para ignorar vibraciones por lag/interpolación
+                const MOVEMENT_THRESHOLD = 2.0;
+                moving = distance > MOVEMENT_THRESHOLD;
                 
                 if (moving) {
-                    // Dirección según input
-                    direction = getDirectionFromMovement(input.dx, input.dy);
-                } else {
-                    // Quieto: mantenemos la última dirección (anim.directionRow)
-                    direction = null;
+                    direction = getDirectionFromMovement(deltaX, deltaY);
                 }
+                // Actualizar siempre la última posición visual para el próximo frame
+                anim.lastVisualX = p.x;
+                anim.lastVisualY = p.y;
             } else {
-                // Jugadores remotos: usamos desplazamiento visual
+                // Jugadores remotos: igual que antes (sin cambios)
                 const deltaX = p.x - anim.lastVisualX;
                 const deltaY = p.y - anim.lastVisualY;
                 const distance = Math.hypot(deltaX, deltaY);
