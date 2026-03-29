@@ -17,7 +17,7 @@ const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
 const ZONE_SHRINK_TIME = 180;
-const ZONE_START_RADIUS = 1000;   // Radio inicial más grande
+const ZONE_START_RADIUS = 1100;
 const ZONE_MIN_RADIUS = 150;
 const ZONE_DAMAGE_PER_SECOND = 8;
 
@@ -27,7 +27,7 @@ let zoneRadius = ZONE_START_RADIUS;
 let zoneShrinkStartTime = Date.now();
 let lastZoneDamageTime = Date.now();
 
-// ==================== IMPLEMENTACIÓN DE PERLIN NOISE 2D ====================
+// ==================== PERLIN NOISE MEJORADO (idéntico al cliente) ====================
 const grad3 = [
     [1,1,0], [-1,1,0], [1,-1,0], [-1,-1,0],
     [1,0,1], [-1,0,1], [1,0,-1], [-1,0,-1],
@@ -81,40 +81,72 @@ function perlin2D(x, y) {
 }
 seed(42);
 
-// ==================== MÁSCARA DE ISLA CON PERLIN ====================
+function fbm(x, y, octaves, persistence, lacunarity) {
+    let value = 0;
+    let amplitude = 1;
+    let frequency = 1;
+    let maxValue = 0;
+    for (let i = 0; i < octaves; i++) {
+        value += amplitude * perlin2D(x * frequency, y * frequency);
+        maxValue += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+    return value / maxValue;
+}
+
+// ==================== MÁSCARA DE ISLA (CONTINENTE CON BORDES MUY IRREGULARES) ====================
 let LAND_MASK = null;
 
 function generateIslandMask() {
     const mask = new Array(WORLD_SIZE);
-    const maxDist = WORLD_SIZE / 2;
+    const maxDist = WORLD_SIZE / 2 - 40;
     for (let x = 0; x < WORLD_SIZE; x++) {
         mask[x] = new Array(WORLD_SIZE);
         for (let y = 0; y < WORLD_SIZE; y++) {
             const dx = x - WORLD_CENTER;
             const dy = y - WORLD_CENTER;
             const dist = Math.hypot(dx, dy);
-            const nx = x / 280;
-            const ny = y / 280;
-            let noiseVal = perlin2D(nx, ny);
-            noiseVal += 0.5 * perlin2D(nx * 2.2, ny * 2.2);
-            noiseVal += 0.25 * perlin2D(nx * 4.5, ny * 4.5);
-            noiseVal = noiseVal / (1 + 0.5 + 0.25);
+            const nx = x / 180;
+            const ny = y / 180;
+            let noiseVal = fbm(nx, ny, 5, 0.55, 2.1);
+            noiseVal += 0.3 * perlin2D(x / 45, y / 45);
             noiseVal = (noiseVal + 1) / 2;
             let radialFactor = 1.0;
-            if (dist > maxDist * 0.7) {
-                radialFactor = 1.0 - Math.pow((dist - maxDist*0.7) / (maxDist*0.3), 2);
+            if (dist > maxDist * 0.65) {
+                radialFactor = 1.0 - Math.pow((dist - maxDist*0.65) / (maxDist*0.35), 1.5);
                 radialFactor = Math.max(0, Math.min(1, radialFactor));
             }
-            const landValue = noiseVal * radialFactor;
-            const isLand = landValue > 0.45 && dist < maxDist - 30;
+            let centerBias = 1.0;
+            if (dist < 200) centerBias = 1.2;
+            const landValue = noiseVal * radialFactor * centerBias;
+            const isLand = landValue > 0.38 && dist < maxDist - 15;
             mask[x][y] = isLand;
         }
     }
-    // Asegurar centro como tierra
-    for (let dx = -40; dx <= 40; dx++) {
-        for (let dy = -40; dy <= 40; dy++) {
+    // Rellenar pequeños agujeros interiores
+    for (let i = 0; i < 8; i++) {
+        for (let x = 1; x < WORLD_SIZE-1; x++) {
+            for (let y = 1; y < WORLD_SIZE-1; y++) {
+                if (!mask[x][y]) {
+                    let neighbors = 0;
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            if (mask[x+dx][y+dy]) neighbors++;
+                        }
+                    }
+                    if (neighbors >= 7) mask[x][y] = true;
+                }
+            }
+        }
+    }
+    // Asegurar núcleo central sólido
+    for (let dx = -180; dx <= 180; dx++) {
+        for (let dy = -180; dy <= 180; dy++) {
             const cx = WORLD_CENTER + dx, cy = WORLD_CENTER + dy;
-            if (cx >= 0 && cx < WORLD_SIZE && cy >= 0 && cy < WORLD_SIZE) mask[cx][cy] = true;
+            if (cx >= 0 && cx < WORLD_SIZE && cy >= 0 && cy < WORLD_SIZE && Math.hypot(dx, dy) < 150) {
+                mask[cx][cy] = true;
+            }
         }
     }
     return mask;
