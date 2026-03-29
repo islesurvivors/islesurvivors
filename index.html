@@ -194,43 +194,103 @@ canvas { display:block; cursor: crosshair; }
 <script>
 (function() {
     // ==================== CONSTANTES DEL MUNDO (COINCIDEN CON SERVIDOR) ====================
-    const WORLD_SIZE = 1600;
+    const WORLD_SIZE = 2400;          // Mapa más grande
     const WORLD_CENTER = WORLD_SIZE / 2;
-    const ISLAND_BASE_RADIUS = 720;
     
-    // ==================== GENERACIÓN DE MÁSCARA DE ISLA (IDÉNTICA AL SERVIDOR) ====================
-    // Genera una máscara booleana (true = arena, false = agua) con forma orgánica de continente.
+    // ==================== IMPLEMENTACIÓN DE PERLIN NOISE 2D ====================
+    // Gradientes para ruido Perlin
+    const grad3 = [
+        [1,1,0], [-1,1,0], [1,-1,0], [-1,-1,0],
+        [1,0,1], [-1,0,1], [1,0,-1], [-1,0,-1],
+        [0,1,1], [0,-1,1], [0,1,-1], [0,-1,-1]
+    ];
+    const p = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
+        190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,
+        171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,
+        245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,
+        164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,
+        58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,
+        98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,
+        235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,
+        114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
+    let perm = new Array(512);
+    let gradP = new Array(512);
+    function seed(seedValue) {
+        if (seedValue > 0 && seedValue < 1) seedValue *= 65536;
+        seedValue = Math.floor(seedValue);
+        let oldp = [...p];
+        for (let i = 0; i < 256; i++) {
+            let v = (i + seedValue) % 256;
+            perm[i] = perm[i+256] = oldp[v];
+            gradP[i] = gradP[i+256] = grad3[perm[i] % grad3.length];
+        }
+    }
+    function dot(g, x, y) { return g[0]*x + g[1]*y; }
+    function fade(t) { return t*t*t*(t*(t*6 - 15) + 10); }
+    function lerp(a, b, t) { return a + t*(b - a); }
+    function perlin2D(x, y) {
+        let X = Math.floor(x) & 255;
+        let Y = Math.floor(y) & 255;
+        x -= Math.floor(x);
+        y -= Math.floor(y);
+        let u = fade(x);
+        let v = fade(y);
+        let aa = perm[X] + Y;
+        let ab = perm[X] + Y + 1;
+        let ba = perm[X+1] + Y;
+        let bb = perm[X+1] + Y + 1;
+        let g00 = gradP[aa]; let g10 = gradP[ba];
+        let g01 = gradP[ab]; let g11 = gradP[bb];
+        let n00 = dot(g00, x, y);
+        let n10 = dot(g10, x-1, y);
+        let n01 = dot(g01, x, y-1);
+        let n11 = dot(g11, x-1, y-1);
+        let nx0 = lerp(n00, n10, u);
+        let nx1 = lerp(n01, n11, u);
+        return lerp(nx0, nx1, v);
+    }
+    // Inicializar semilla fija para que el mapa sea consistente
+    seed(42);
+    
+    // ==================== GENERACIÓN DE MÁSCARA DE ISLA CON PERLIN NOISE ====================
     function generateIslandMask() {
         const mask = new Array(WORLD_SIZE);
-        for (let i = 0; i < WORLD_SIZE; i++) {
-            mask[i] = new Array(WORLD_SIZE);
-            for (let j = 0; j < WORLD_SIZE; j++) {
-                const dx = i - WORLD_CENTER;
-                const dy = j - WORLD_CENTER;
+        const centerX = WORLD_CENTER, centerY = WORLD_CENTER;
+        const maxDist = WORLD_SIZE / 2;
+        for (let x = 0; x < WORLD_SIZE; x++) {
+            mask[x] = new Array(WORLD_SIZE);
+            for (let y = 0; y < WORLD_SIZE; y++) {
+                const dx = x - centerX;
+                const dy = y - centerY;
                 const dist = Math.hypot(dx, dy);
-                const angle = Math.atan2(dy, dx);
-                // Perturbaciones para forma orgánica (continente)
-                const variation = Math.sin(angle * 5) * 45 + Math.cos(angle * 3) * 35 + Math.sin(angle * 7) * 25;
-                const radiusAtAngle = ISLAND_BASE_RADIUS + variation;
-                let isLand = dist < radiusAtAngle;
-                // Asegurar bordes de agua (orilla exterior)
-                if (i < 60 || i > WORLD_SIZE - 60 || j < 60 || j > WORLD_SIZE - 60) isLand = false;
-                mask[i][j] = isLand;
+                // Escala del ruido (frecuencia)
+                const nx = x / 280;
+                const ny = y / 280;
+                let noiseVal = perlin2D(nx, ny);
+                // Añadir una segunda octava para más detalle
+                noiseVal += 0.5 * perlin2D(nx * 2.2, ny * 2.2);
+                noiseVal += 0.25 * perlin2D(nx * 4.5, ny * 4.5);
+                noiseVal = noiseVal / (1 + 0.5 + 0.25); // Normalizar aprox
+                noiseVal = (noiseVal + 1) / 2; // Mapear a [0,1]
+                // Factor radial para que los bordes sean agua (caída suave)
+                let radialFactor = 1.0;
+                if (dist > maxDist * 0.7) {
+                    radialFactor = 1.0 - Math.pow((dist - maxDist*0.7) / (maxDist*0.3), 2);
+                    radialFactor = Math.max(0, Math.min(1, radialFactor));
+                }
+                // Umbral de tierra: valor alto de ruido + factor radial
+                const landThreshold = 0.45;
+                const landValue = noiseVal * radialFactor;
+                const isLand = landValue > landThreshold && dist < maxDist - 30;
+                mask[x][y] = isLand;
             }
         }
-        // Pequeños detalles: algunos "lagos" internos opcionales (opcional, para más realismo)
-        for (let i = 0; i < 300; i++) {
-            const x = Math.floor(Math.random() * WORLD_SIZE);
-            const y = Math.floor(Math.random() * WORLD_SIZE);
-            if (mask[x] && mask[x][y] === true && Math.random() < 0.15) {
-                // pequeña mancha de agua interior (laguna)
-                for (let dx = -6; dx <= 6; dx++) {
-                    for (let dy = -6; dy <= 6; dy++) {
-                        const nx = x + dx, ny = y + dy;
-                        if (nx >= 0 && nx < WORLD_SIZE && ny >= 0 && ny < WORLD_SIZE && Math.hypot(dx, dy) < 5) {
-                            mask[nx][ny] = false;
-                        }
-                    }
+        // Asegurar que el centro sea tierra (por si acaso)
+        for (let dx = -40; dx <= 40; dx++) {
+            for (let dy = -40; dy <= 40; dy++) {
+                const cx = WORLD_CENTER + dx, cy = WORLD_CENTER + dy;
+                if (cx >= 0 && cx < WORLD_SIZE && cy >= 0 && cy < WORLD_SIZE) {
+                    mask[cx][cy] = true;
                 }
             }
         }
@@ -238,9 +298,8 @@ canvas { display:block; cursor: crosshair; }
     }
     
     let islandMask = null;
-    let mapCanvas = null;          // canvas pre-renderizado del terreno
+    let mapCanvas = null;
     
-    // Precomputar el mapa visual (océano + arena + detalles)
     function buildTerrainCanvas() {
         if (!islandMask) islandMask = generateIslandMask();
         const canvasOff = document.createElement('canvas');
@@ -248,18 +307,16 @@ canvas { display:block; cursor: crosshair; }
         canvasOff.height = WORLD_SIZE;
         const offCtx = canvasOff.getContext('2d');
         
-        // 1. Fondo de océano (celeste)
+        // Océano celeste
         offCtx.fillStyle = "#7ec8e0";
         offCtx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
         
-        // 2. Dibujar la arena (isla)
-        offCtx.fillStyle = "#e0b05a";   // color arena base
-        // Opcional: variaciones de color para dar textura
+        // Dibujar arena con variaciones de color basadas en ruido para textura
+        offCtx.fillStyle = "#e0b05a";
         for (let y = 0; y < WORLD_SIZE; y++) {
             for (let x = 0; x < WORLD_SIZE; x++) {
                 if (islandMask[x][y]) {
-                    // Pequeñas variaciones de color para simular detalles (arena más clara/oscura)
-                    const variation = (Math.sin(x * 0.05) * Math.cos(y * 0.05) * 15) | 0;
+                    const variation = (Math.sin(x * 0.03) * Math.cos(y * 0.03) * 20) | 0;
                     let r = 0xe0 + variation;
                     let g = 0xb0 + variation * 0.6;
                     let b = 0x5a + variation * 0.3;
@@ -272,9 +329,9 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         
-        // 3. Detalles visuales adicionales: pequeños puntos oscuros (rocas, vegetación)
+        // Detalles: puntos oscuros (rocas, sombras)
         offCtx.fillStyle = "#aa8844";
-        for (let i = 0; i < 6000; i++) {
+        for (let i = 0; i < 12000; i++) {
             const x = Math.floor(Math.random() * WORLD_SIZE);
             const y = Math.floor(Math.random() * WORLD_SIZE);
             if (islandMask[x] && islandMask[x][y]) {
@@ -282,7 +339,7 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         offCtx.fillStyle = "#6a4a2a";
-        for (let i = 0; i < 3000; i++) {
+        for (let i = 0; i < 6000; i++) {
             const x = Math.floor(Math.random() * WORLD_SIZE);
             const y = Math.floor(Math.random() * WORLD_SIZE);
             if (islandMask[x] && islandMask[x][y]) {
@@ -290,6 +347,14 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         return canvasOff;
+    }
+    
+    function isLandAt(worldX, worldY) {
+        if (!islandMask) return true;
+        const ix = Math.floor(worldX);
+        const iy = Math.floor(worldY);
+        if (ix < 0 || ix >= WORLD_SIZE || iy < 0 || iy >= WORLD_SIZE) return false;
+        return islandMask[ix][iy] === true;
     }
     
     // ==================== FIN GENERACIÓN MAPA ====================
@@ -300,79 +365,40 @@ canvas { display:block; cursor: crosshair; }
     let myId = null;
     let players = {};
     let serverPlayers = {};
-    let zone = { x: WORLD_CENTER, y: WORLD_CENTER, radius: 700 };
+    let zone = { x: WORLD_CENTER, y: WORLD_CENTER, radius: 1000 }; // Radio inicial mayor
     let aliveCount = 0;
     let localPlayerHealth = 100;
     let lastAttackTime = 0;
     let attackCooldown = 0.8;
 
-    const keyState = {
-        w: false,
-        s: false,
-        a: false,
-        d: false
-    };
-    
+    const keyState = { w: false, s: false, a: false, d: false };
     let input = { dx: 0, dy: 0 };
     
-    // ===================== POINT & CLICK (DESKTOP) =====================
     let moveTarget = null;
     const STOP_DISTANCE = 12.0;
     let recentTouch = false;
     let isClickMoving = false;
     
-    function isLandAt(worldX, worldY) {
-        if (!islandMask) return true;
-        const ix = Math.floor(worldX);
-        const iy = Math.floor(worldY);
-        if (ix < 0 || ix >= WORLD_SIZE || iy < 0 || iy >= WORLD_SIZE) return false;
-        return islandMask[ix][iy] === true;
-    }
-    
-    function clearMoveTarget() {
-        moveTarget = null;
-        isClickMoving = false;
-    }
+    function clearMoveTarget() { moveTarget = null; isClickMoving = false; }
     
     function setMoveTarget(worldX, worldY) {
         if (!players[myId] || !players[myId].alive) return;
-        // Validar que el destino esté sobre arena (no agua)
         if (!isLandAt(worldX, worldY)) return;
         moveTarget = { x: worldX, y: worldY };
-        keyState.w = false;
-        keyState.s = false;
-        keyState.a = false;
-        keyState.d = false;
+        keyState.w = keyState.s = keyState.a = keyState.d = false;
         isTouchInput = false;
         isClickMoving = true;
     }
     
     function updateMoveTargetDirection() {
-        if (!players[myId] || !players[myId].alive) {
-            if (moveTarget) clearMoveTarget();
-            return;
-        }
-        if (keyState.w || keyState.s || keyState.a || keyState.d || isTouchInput) {
-            if (moveTarget) clearMoveTarget();
-            return;
-        }
-        if (!moveTarget) {
-            if (input.dx !== 0 || input.dy !== 0) {
-                input.dx = 0;
-                input.dy = 0;
-            }
-            return;
-        }
+        if (!players[myId] || !players[myId].alive) { if (moveTarget) clearMoveTarget(); return; }
+        if (keyState.w || keyState.s || keyState.a || keyState.d || isTouchInput) { if (moveTarget) clearMoveTarget(); return; }
+        if (!moveTarget) { if (input.dx !== 0 || input.dy !== 0) input.dx = input.dy = 0; return; }
         const local = players[myId];
         const dxTarget = moveTarget.x - local.x;
         const dyTarget = moveTarget.y - local.y;
         const distance = Math.hypot(dxTarget, dyTarget);
-        if (distance < STOP_DISTANCE) {
-            clearMoveTarget();
-            input.dx = 0;
-            input.dy = 0;
-            return;
-        }
+        if (distance < STOP_DISTANCE) { clearMoveTarget(); input.dx = input.dy = 0; return; }
         const mag = distance;
         input.dx = dxTarget / mag;
         input.dy = dyTarget / mag;
@@ -387,10 +413,7 @@ canvas { display:block; cursor: crosshair; }
     }
     
     function onCanvasClick(e) {
-        if (recentTouch) {
-            recentTouch = false;
-            return;
-        }
+        if (recentTouch) { recentTouch = false; return; }
         e.preventDefault();
         if (!myId) return;
         if (!players[myId] || !players[myId].alive) return;
@@ -405,21 +428,12 @@ canvas { display:block; cursor: crosshair; }
         setMoveTarget(worldPos.x, worldPos.y);
     }
     
-    function onCanvasContextMenu(e) {
-        e.preventDefault();
-        return false;
-    }
-    
-    function onTouchStartForClick(e) {
-        recentTouch = true;
-        setTimeout(() => { recentTouch = false; }, 300);
-    }
+    function onCanvasContextMenu(e) { e.preventDefault(); return false; }
+    function onTouchStartForClick(e) { recentTouch = true; setTimeout(() => { recentTouch = false; }, 300); }
     
     function updateInputFromKeys() {
-        let rawDx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
-        let rawDy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
-        input.dx = rawDx;
-        input.dy = rawDy;
+        input.dx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
+        input.dy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
     }
     
     function handleKeyDown(e) {
@@ -429,11 +443,7 @@ canvas { display:block; cursor: crosshair; }
         else if (key === 's') { keyState.s = true; changed = true; e.preventDefault(); }
         else if (key === 'a') { keyState.a = true; changed = true; e.preventDefault(); }
         else if (key === 'd') { keyState.d = true; changed = true; e.preventDefault(); }
-        if (changed) {
-            updateInputFromKeys();
-            isTouchInput = false;
-            if (moveTarget) clearMoveTarget();
-        }
+        if (changed) { updateInputFromKeys(); isTouchInput = false; if (moveTarget) clearMoveTarget(); }
     }
     
     function handleKeyUp(e) {
@@ -446,12 +456,8 @@ canvas { display:block; cursor: crosshair; }
         if (changed) updateInputFromKeys();
     }
     
-    document.removeEventListener("keydown", window._oldKeyDown);
-    document.removeEventListener("keyup", window._oldKeyUp);
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
-    window._oldKeyDown = handleKeyDown;
-    window._oldKeyUp = handleKeyUp;
     
     let deathTime = null;
     let pingHistory = [];
@@ -474,13 +480,7 @@ canvas { display:block; cursor: crosshair; }
     spriteSheet.onload = () => { spriteLoaded = true; };
     spriteSheet.src = SPRITE_URL;
 
-    const DIRECTION_TO_ROW = {
-        down: 0,
-        up: 1,
-        left: 2,
-        right: 3
-    };
-
+    const DIRECTION_TO_ROW = { down: 0, up: 1, left: 2, right: 3 };
     let animInterval = 0.25;
     const slider = document.getElementById('animSpeedSlider');
     const speedValue = document.getElementById('animSpeedValue');
@@ -494,29 +494,21 @@ canvas { display:block; cursor: crosshair; }
     let playerAnim = {};
     const currentFrameSpan = document.getElementById('currentFrame');
     const timeToNextSpan = document.getElementById('timeToNext');
-
     let isTouchInput = false;
 
     function getPlayerColor(id, isMe, serverColor) {
         if (isMe) return "#88ff88";
         if (serverColor) return serverColor;
         let hash = 0;
-        for (let i = 0; i < id.length; i++) {
-            hash = ((hash << 5) - hash) + id.charCodeAt(i);
-            hash |= 0;
-        }
+        for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash) + id.charCodeAt(i);
         const hue = Math.abs(hash % 360);
         return `hsl(${hue}, 70%, 55%)`;
     }
 
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
     resize();
     window.addEventListener("resize", resize);
 
-    // Inicializar máscara y mapa de terreno
     islandMask = generateIslandMask();
     mapCanvas = buildTerrainCanvas();
 
@@ -524,9 +516,7 @@ canvas { display:block; cursor: crosshair; }
 
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
-        if (data.type === 'init') {
-            myId = data.id;
-        }
+        if (data.type === 'init') myId = data.id;
         else if (data.type === 'state') {
             serverPlayers = data.players;
             zone = data.zone;
@@ -540,24 +530,19 @@ canvas { display:block; cursor: crosshair; }
                 if (healthText) healthText.innerText = `${Math.floor(localPlayerHealth)} HP`;
                 lastAttackTime = serverPlayers[myId].lastAttackTime;
             }
-            const aliveCountSpan = document.getElementById('aliveCount');
-            if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
+            document.getElementById('aliveCount').innerText = aliveCount;
             if (data.timestamp) {
                 let rawPing = Date.now() - data.timestamp;
                 if (rawPing < 0) rawPing = 0;
                 pingHistory.push(rawPing);
                 if (pingHistory.length > PING_HISTORY_LEN) pingHistory.shift();
                 const avgPing = Math.round(pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length);
-                const pingSpan = document.getElementById('pingValue');
-                if (pingSpan) pingSpan.innerText = avgPing;
+                document.getElementById('pingValue').innerText = avgPing;
             }
         }
         else if (data.type === 'damage') {
-            if (data.target === myId) {
-                showDamageNumber(data.damage, true);
-            } else if (data.from === myId) {
-                showDamageNumber(data.damage, false, data.target);
-            }
+            if (data.target === myId) showDamageNumber(data.damage, true);
+            else if (data.from === myId) showDamageNumber(data.damage, false, data.target);
         }
     };
 
@@ -614,13 +599,9 @@ canvas { display:block; cursor: crosshair; }
             if (!players[id]) {
                 players[id] = { ...sp };
                 playerAnim[id] = {
-                    frame: 1,
-                    directionRow: 0,
-                    moving: false,
-                    lastVisualX: sp.x,
-                    lastVisualY: sp.y,
-                    nextFrameTime: performance.now() / 1000 + animInterval,
-                    idleCounter: 0
+                    frame: 1, directionRow: 0, moving: false,
+                    lastVisualX: sp.x, lastVisualY: sp.y,
+                    nextFrameTime: performance.now() / 1000 + animInterval, idleCounter: 0
                 };
             } else {
                 players[id].x += (sp.x - players[id].x) * 0.7;
@@ -635,18 +616,11 @@ canvas { display:block; cursor: crosshair; }
 
     function getDirectionFromMovement(dx, dy) {
         if (isTouchInput || isClickMoving) {
-            if (Math.abs(dx) > Math.abs(dy)) {
-                return dx > 0 ? 'right' : 'left';
-            } else if (Math.abs(dy) > 0.01) {
-                return dy > 0 ? 'down' : 'up';
-            }
+            if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
+            else if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
         } else {
-            if (Math.abs(dy) > 0.01) {
-                return dy > 0 ? 'down' : 'up';
-            }
-            if (Math.abs(dx) > 0.01) {
-                return dx > 0 ? 'right' : 'left';
-            }
+            if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
+            if (Math.abs(dx) > 0.01) return dx > 0 ? 'right' : 'left';
         }
         return null;
     }
@@ -663,35 +637,18 @@ canvas { display:block; cursor: crosshair; }
             const distance = Math.hypot(deltaX, deltaY);
             anim.lastVisualX = p.x;
             anim.lastVisualY = p.y;
-            const MOVEMENT_THRESHOLD = 0.5;
-            const DIRECTION_THRESHOLD = 2.0;
-            const isMoving = distance > MOVEMENT_THRESHOLD;
+            const isMoving = distance > 0.5;
             if (isMoving) {
                 anim.idleCounter = 0;
-                if (!anim.moving) {
-                    anim.moving = true;
-                    anim.frame = 0;
-                    anim.nextFrameTime = now + animInterval;
-                }
-            } else {
-                if (anim.moving) {
-                    anim.idleCounter++;
-                    if (anim.idleCounter >= 3) {
-                        anim.moving = false;
-                        anim.frame = 1;
-                    }
-                }
-            }
-            if (distance > DIRECTION_THRESHOLD) {
+                if (!anim.moving) { anim.moving = true; anim.frame = 0; anim.nextFrameTime = now + animInterval; }
+            } else if (anim.moving && ++anim.idleCounter >= 3) { anim.moving = false; anim.frame = 1; }
+            if (distance > 2.0) {
                 const direction = getDirectionFromMovement(deltaX, deltaY);
                 if (direction) {
                     const newRow = DIRECTION_TO_ROW[direction];
                     if (anim.directionRow !== newRow) {
                         anim.directionRow = newRow;
-                        if (anim.moving) {
-                            anim.frame = 0;
-                            anim.nextFrameTime = now + animInterval;
-                        }
+                        if (anim.moving) { anim.frame = 0; anim.nextFrameTime = now + animInterval; }
                     }
                 }
             }
@@ -699,13 +656,8 @@ canvas { display:block; cursor: crosshair; }
                 anim.frame = (anim.frame + 1) % 4;
                 anim.nextFrameTime = now + animInterval;
             }
-            if (id === myId) {
-                if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
-                if (timeToNextSpan) {
-                    const timeLeft = Math.max(0, anim.nextFrameTime - now);
-                    timeToNextSpan.innerText = timeLeft.toFixed(2);
-                }
-            }
+            if (id === myId && currentFrameSpan) currentFrameSpan.innerText = anim.frame;
+            if (id === myId && timeToNextSpan) timeToNextSpan.innerText = Math.max(0, anim.nextFrameTime - now).toFixed(2);
         }
     }
 
@@ -713,19 +665,11 @@ canvas { display:block; cursor: crosshair; }
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const localPlayer = players[myId];
         if (!localPlayer) return;
-        
         let camX = localPlayer.x - canvas.width / 2;
         let camY = localPlayer.y - canvas.height / 2;
-        
         ctx.save();
         ctx.translate(-camX, -camY);
-        
-        // Dibujar el terreno pre-renderizado (océano + isla)
-        if (mapCanvas) {
-            ctx.drawImage(mapCanvas, 0, 0);
-        }
-        
-        // Zona segura (círculo de tormenta) - se dibuja encima del terreno
+        if (mapCanvas) ctx.drawImage(mapCanvas, 0, 0);
         ctx.beginPath();
         ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
@@ -737,58 +681,36 @@ canvas { display:block; cursor: crosshair; }
         ctx.arc(zone.x, zone.y, zone.radius + 5, 0, Math.PI * 2);
         ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
         ctx.stroke();
-        
-        const barWidth = 32;
-        const barHeight = 6;
-        
-        const playerList = [];
-        for (let id in players) {
-            if (players[id].alive) {
-                playerList.push({ id, p: players[id] });
-            }
-        }
-        playerList.sort((a, b) => a.p.y - b.p.y);
-        
-        for (const { id, p } of playerList) {
-            const isMe = (id === myId);
-            const anim = playerAnim[id] || { frame: 1, directionRow: 0 };
-            const row = anim.directionRow;
-            const frameCol = anim.frame;
-            
+        const barWidth = 32, barHeight = 6;
+        const playerList = Object.values(players).filter(p => p.alive).sort((a,b) => a.y - b.y);
+        for (const p of playerList) {
+            const isMe = (p.id === myId);
+            const anim = playerAnim[p.id] || { frame: 1, directionRow: 0 };
             if (spriteLoaded) {
-                const srcX = frameCol * TILE_SIZE + CROP_LEFT;
-                const srcY = row * TILE_SIZE + CROP_TOP;
-                const srcW = CROP_WIDTH;
-                const srcH = CROP_HEIGHT;
-                const destX = p.x - SPRITE_W/2;
-                const destY = p.y - SPRITE_H/2;
-                ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, SPRITE_W, SPRITE_H);
+                const srcX = anim.frame * TILE_SIZE + CROP_LEFT;
+                const srcY = anim.directionRow * TILE_SIZE + CROP_TOP;
+                ctx.drawImage(spriteSheet, srcX, srcY, CROP_WIDTH, CROP_HEIGHT, p.x - SPRITE_W/2, p.y - SPRITE_H/2, SPRITE_W, SPRITE_H);
             } else {
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, SPRITE_W/2, 0, Math.PI * 2);
-                ctx.fillStyle = getPlayerColor(id, isMe, p.color);
+                ctx.arc(p.x, p.y, SPRITE_W/2, 0, Math.PI*2);
+                ctx.fillStyle = getPlayerColor(p.id, isMe, p.color);
                 ctx.fill();
                 ctx.strokeStyle = "#fff";
                 ctx.lineWidth = 2;
                 ctx.stroke();
             }
-            
             const healthPercent = p.health / 100;
-            const barX = p.x - barWidth / 2;
-            const barY = p.y - SPRITE_H/2 - 12;
             ctx.fillStyle = "#333";
-            ctx.fillRect(barX, barY, barWidth, barHeight);
+            ctx.fillRect(p.x - barWidth/2, p.y - SPRITE_H/2 - 12, barWidth, barHeight);
             ctx.fillStyle = "#ff3333";
-            ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
-            
+            ctx.fillRect(p.x - barWidth/2, p.y - SPRITE_H/2 - 12, barWidth * healthPercent, barHeight);
             ctx.font = "12px Arial";
             ctx.fillStyle = "white";
             ctx.shadowBlur = 2;
-            ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
-            
+            ctx.fillText(isMe ? "Tú" : `P${p.id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
             if (isMe && lastAttackTime) {
-                const now = Date.now() / 1000;
-                const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
+                const nowSec = Date.now() / 1000;
+                const cooldownRemaining = Math.max(0, attackCooldown - (nowSec - lastAttackTime));
                 if (cooldownRemaining > 0) {
                     ctx.beginPath();
                     ctx.arc(p.x, p.y, SPRITE_W/2 + 2, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
@@ -799,15 +721,10 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         ctx.restore();
-        
         ctx.font = "bold 14px monospace";
         ctx.fillStyle = "white";
-        ctx.shadowBlur = 2;
         ctx.fillText(`🌊 Zona segura: ${Math.floor(zone.radius)}m`, 20, 70);
-        if (zone.radius < 300) {
-            ctx.fillStyle = "#ff8888";
-            ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
-        }
+        if (zone.radius < 300) ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
     }
 
     function updateRespawnMessage() {
@@ -817,13 +734,12 @@ canvas { display:block; cursor: crosshair; }
         if (!localPlayer) return;
         if (!localPlayer.alive) {
             if (deathTime === null) deathTime = Date.now();
-            const elapsed = (Date.now() - deathTime) / 1000;
-            let remaining = Math.max(0, Math.ceil(5 - elapsed));
+            const remaining = Math.max(0, Math.ceil(5 - (Date.now() - deathTime) / 1000));
             if (countdownSpan) countdownSpan.innerText = remaining;
             if (msgDiv) msgDiv.style.display = 'block';
             if (moveTarget) clearMoveTarget();
         } else {
-            if (deathTime !== null) deathTime = null;
+            deathTime = null;
             if (msgDiv) msgDiv.style.display = 'none';
         }
     }
