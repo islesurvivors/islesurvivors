@@ -462,26 +462,23 @@ canvas { display:block; cursor: crosshair; }
             }
             const aliveCountSpan = document.getElementById('aliveCount');
             if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
-            
-            // --- MEJORA DEL PING: mostrar valor absoluto con decimales ---
-            if (data.timestamp) {
-                let rawPing = Date.now() - data.timestamp;
-                // Tomar valor absoluto para evitar negativos por desincronización
-                rawPing = Math.abs(rawPing);
-                pingHistory.push(rawPing);
-                if (pingHistory.length > PING_HISTORY_LEN) pingHistory.shift();
-                // Calcular promedio con decimales
-                const avgPing = pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length;
-                const pingSpan = document.getElementById('pingValue');
-                if (pingSpan) pingSpan.innerText = avgPing.toFixed(1);
-            }
-            // ------------------------------------------------------------
+            // No calculamos ping aquí; lo hacemos con ping/pong
         }
         else if (data.type === 'damage') {
             if (data.target === myId) {
                 showDamageNumber(data.damage, true);
             } else if (data.from === myId) {
                 showDamageNumber(data.damage, false, data.target);
+            }
+        }
+        else if (data.type === 'pong') {
+            if (data.clientTime) {
+                const rtt = Date.now() - data.clientTime;
+                pingHistory.push(rtt);
+                if (pingHistory.length > PING_HISTORY_LEN) pingHistory.shift();
+                const avgPing = pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length;
+                const pingSpan = document.getElementById('pingValue');
+                if (pingSpan) pingSpan.innerText = avgPing.toFixed(1);
             }
         }
     };
@@ -526,10 +523,8 @@ canvas { display:block; cursor: crosshair; }
     });
 
     // ============ Configuración de eventos point & click (desktop) ============
-    // Agregar evento click para movimiento con ratón
     canvas.addEventListener("click", onCanvasClick);
     canvas.addEventListener("contextmenu", onCanvasContextMenu);
-    // Detectar inicios táctiles para evitar falsos clicks en móvil
     canvas.addEventListener("touchstart", onTouchStartForClick);
     // ==========================================================================
     
@@ -538,6 +533,13 @@ canvas { display:block; cursor: crosshair; }
             ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
         }
     }, 30);
+    
+    // Enviar ping periódicamente para medir RTT real
+    setInterval(() => {
+        if (ws.readyState === 1 && myId) {
+            ws.send(JSON.stringify({ type: "ping", clientTime: Date.now() }));
+        }
+    }, 2000); // cada 2 segundos
 
     function interpolateAll() {
         for (let id in serverPlayers) {
