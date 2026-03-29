@@ -10,16 +10,15 @@ const server = app.listen(process.env.PORT || 3000, () => {
 
 const wss = new WebSocket.Server({ server });
 
-const WORLD_SIZE = 1600;
+const WORLD_SIZE = 2400;
 const WORLD_CENTER = WORLD_SIZE / 2;
-const ISLAND_BASE_RADIUS = 720;
 const PLAYER_RADIUS = 8;
 const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
 const ZONE_SHRINK_TIME = 180;
-const ZONE_START_RADIUS = 700;
-const ZONE_MIN_RADIUS = 100;
+const ZONE_START_RADIUS = 1000;   // Radio inicial más grande
+const ZONE_MIN_RADIUS = 150;
 const ZONE_DAMAGE_PER_SECOND = 8;
 
 let players = {};
@@ -28,86 +27,129 @@ let zoneRadius = ZONE_START_RADIUS;
 let zoneShrinkStartTime = Date.now();
 let lastZoneDamageTime = Date.now();
 
-// ==================== MÁSCARA DE ISLA (ARENA vs AGUA) ====================
+// ==================== IMPLEMENTACIÓN DE PERLIN NOISE 2D ====================
+const grad3 = [
+    [1,1,0], [-1,1,0], [1,-1,0], [-1,-1,0],
+    [1,0,1], [-1,0,1], [1,0,-1], [-1,0,-1],
+    [0,1,1], [0,-1,1], [0,1,-1], [0,-1,-1]
+];
+const p = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
+    190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,
+    171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,
+    245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,
+    164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,
+    58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,
+    98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,
+    235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,
+    114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
+let perm = new Array(512);
+let gradP = new Array(512);
+
+function seed(seedValue) {
+    if (seedValue > 0 && seedValue < 1) seedValue *= 65536;
+    seedValue = Math.floor(seedValue);
+    let oldp = [...p];
+    for (let i = 0; i < 256; i++) {
+        let v = (i + seedValue) % 256;
+        perm[i] = perm[i+256] = oldp[v];
+        gradP[i] = gradP[i+256] = grad3[perm[i] % grad3.length];
+    }
+}
+function dot(g, x, y) { return g[0]*x + g[1]*y; }
+function fade(t) { return t*t*t*(t*(t*6 - 15) + 10); }
+function lerp(a, b, t) { return a + t*(b - a); }
+function perlin2D(x, y) {
+    let X = Math.floor(x) & 255;
+    let Y = Math.floor(y) & 255;
+    x -= Math.floor(x);
+    y -= Math.floor(y);
+    let u = fade(x);
+    let v = fade(y);
+    let aa = perm[X] + Y;
+    let ab = perm[X] + Y + 1;
+    let ba = perm[X+1] + Y;
+    let bb = perm[X+1] + Y + 1;
+    let g00 = gradP[aa], g10 = gradP[ba];
+    let g01 = gradP[ab], g11 = gradP[bb];
+    let n00 = dot(g00, x, y);
+    let n10 = dot(g10, x-1, y);
+    let n01 = dot(g01, x, y-1);
+    let n11 = dot(g11, x-1, y-1);
+    let nx0 = lerp(n00, n10, u);
+    let nx1 = lerp(n01, n11, u);
+    return lerp(nx0, nx1, v);
+}
+seed(42);
+
+// ==================== MÁSCARA DE ISLA CON PERLIN ====================
 let LAND_MASK = null;
 
 function generateIslandMask() {
-  const mask = new Array(WORLD_SIZE);
-  for (let i = 0; i < WORLD_SIZE; i++) {
-    mask[i] = new Array(WORLD_SIZE);
-    for (let j = 0; j < WORLD_SIZE; j++) {
-      const dx = i - WORLD_CENTER;
-      const dy = j - WORLD_CENTER;
-      const dist = Math.hypot(dx, dy);
-      const angle = Math.atan2(dy, dx);
-      // Perturbaciones para forma orgánica de continente
-      const variation = Math.sin(angle * 5) * 45 + Math.cos(angle * 3) * 35 + Math.sin(angle * 7) * 25;
-      const radiusAtAngle = ISLAND_BASE_RADIUS + variation;
-      let isLand = dist < radiusAtAngle;
-      // Bordes exteriores siempre agua
-      if (i < 60 || i > WORLD_SIZE - 60 || j < 60 || j > WORLD_SIZE - 60) isLand = false;
-      mask[i][j] = isLand;
-    }
-  }
-  // Pequeños lagos internos (opcional)
-  for (let i = 0; i < 300; i++) {
-    const x = Math.floor(Math.random() * WORLD_SIZE);
-    const y = Math.floor(Math.random() * WORLD_SIZE);
-    if (mask[x] && mask[x][y] === true && Math.random() < 0.15) {
-      for (let dx = -6; dx <= 6; dx++) {
-        for (let dy = -6; dy <= 6; dy++) {
-          const nx = x + dx, ny = y + dy;
-          if (nx >= 0 && nx < WORLD_SIZE && ny >= 0 && ny < WORLD_SIZE && Math.hypot(dx, dy) < 5) {
-            mask[nx][ny] = false;
-          }
+    const mask = new Array(WORLD_SIZE);
+    const maxDist = WORLD_SIZE / 2;
+    for (let x = 0; x < WORLD_SIZE; x++) {
+        mask[x] = new Array(WORLD_SIZE);
+        for (let y = 0; y < WORLD_SIZE; y++) {
+            const dx = x - WORLD_CENTER;
+            const dy = y - WORLD_CENTER;
+            const dist = Math.hypot(dx, dy);
+            const nx = x / 280;
+            const ny = y / 280;
+            let noiseVal = perlin2D(nx, ny);
+            noiseVal += 0.5 * perlin2D(nx * 2.2, ny * 2.2);
+            noiseVal += 0.25 * perlin2D(nx * 4.5, ny * 4.5);
+            noiseVal = noiseVal / (1 + 0.5 + 0.25);
+            noiseVal = (noiseVal + 1) / 2;
+            let radialFactor = 1.0;
+            if (dist > maxDist * 0.7) {
+                radialFactor = 1.0 - Math.pow((dist - maxDist*0.7) / (maxDist*0.3), 2);
+                radialFactor = Math.max(0, Math.min(1, radialFactor));
+            }
+            const landValue = noiseVal * radialFactor;
+            const isLand = landValue > 0.45 && dist < maxDist - 30;
+            mask[x][y] = isLand;
         }
-      }
     }
-  }
-  return mask;
+    // Asegurar centro como tierra
+    for (let dx = -40; dx <= 40; dx++) {
+        for (let dy = -40; dy <= 40; dy++) {
+            const cx = WORLD_CENTER + dx, cy = WORLD_CENTER + dy;
+            if (cx >= 0 && cx < WORLD_SIZE && cy >= 0 && cy < WORLD_SIZE) mask[cx][cy] = true;
+        }
+    }
+    return mask;
 }
 
 function isLand(x, y) {
-  const ix = Math.floor(x);
-  const iy = Math.floor(y);
-  if (ix < 0 || ix >= WORLD_SIZE || iy < 0 || iy >= WORLD_SIZE) return false;
-  return LAND_MASK[ix][iy] === true;
+    if (!LAND_MASK) return true;
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    if (ix < 0 || ix >= WORLD_SIZE || iy < 0 || iy >= WORLD_SIZE) return false;
+    return LAND_MASK[ix][iy] === true;
 }
 
 function clampToLand(player) {
-  if (isLand(player.x, player.y)) return;
-  // Buscar la celda de tierra más cercana (búsqueda espiral)
-  for (let radius = 1; radius <= 80; radius++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      for (let dy = -radius; dy <= radius; dy++) {
-        const nx = player.x + dx;
-        const ny = player.y + dy;
-        if (isLand(nx, ny)) {
-          player.x = nx;
-          player.y = ny;
-          return;
+    if (isLand(player.x, player.y)) return;
+    for (let radius = 1; radius <= 80; radius++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+            for (let dy = -radius; dy <= radius; dy++) {
+                const nx = player.x + dx, ny = player.y + dy;
+                if (isLand(nx, ny)) { player.x = nx; player.y = ny; return; }
+            }
         }
-      }
     }
-  }
-  // Fallback: centro del mundo (que es tierra)
-  player.x = WORLD_CENTER;
-  player.y = WORLD_CENTER;
+    player.x = WORLD_CENTER; player.y = WORLD_CENTER;
 }
 
 function getRandomLandPosition() {
-  let attempts = 0;
-  while (attempts < 500) {
-    const x = Math.random() * (WORLD_SIZE - 200) + 100;
-    const y = Math.random() * (WORLD_SIZE - 200) + 100;
-    if (isLand(x, y)) return { x, y };
-    attempts++;
-  }
-  // fallback centro
-  return { x: WORLD_CENTER, y: WORLD_CENTER };
+    for (let attempts = 0; attempts < 500; attempts++) {
+        const x = Math.random() * (WORLD_SIZE - 200) + 100;
+        const y = Math.random() * (WORLD_SIZE - 200) + 100;
+        if (isLand(x, y)) return { x, y };
+    }
+    return { x: WORLD_CENTER, y: WORLD_CENTER };
 }
 
-// Inicializar máscara
 LAND_MASK = generateIslandMask();
 
 // ==================== FIN SISTEMA DE TERRENO ====================
@@ -128,17 +170,12 @@ class Player {
         this.color = this.generateColor(id);
         this.respawnTime = null;
     }
-
     generateColor(id) {
         let hash = 0;
-        for (let i = 0; i < id.length; i++) {
-            hash = ((hash << 5) - hash) + id.charCodeAt(i);
-            hash |= 0;
-        }
+        for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash) + id.charCodeAt(i);
         const hue = Math.abs(hash % 360);
         return `hsl(${hue}, 70%, 55%)`;
     }
-
     takeDamage(amount) {
         if (!this.alive) return false;
         this.health = Math.max(0, this.health - amount);
@@ -149,11 +186,7 @@ class Player {
         }
         return false;
     }
-
-    canAttack(now) {
-        return this.alive && (now - this.lastAttackTime >= ATTACK_COOLDOWN);
-    }
-
+    canAttack(now) { return this.alive && (now - this.lastAttackTime >= ATTACK_COOLDOWN); }
     attack(target, now) {
         if (!this.canAttack(now)) return false;
         const damage = Math.floor(Math.random() * (ATTACK_DAMAGE_MAX - ATTACK_DAMAGE_MIN + 1) + ATTACK_DAMAGE_MIN);
@@ -165,29 +198,19 @@ class Player {
 
 function resolveCombat(p1, p2, now) {
     if (!p1.alive || !p2.alive) return null;
-    
     const p1Can = p1.canAttack(now);
     const p2Can = p2.canAttack(now);
     if (!p1Can && !p2Can) return null;
-    
     let first, second;
     if (p1Can && p2Can) {
-        if ((now - p1.lastAttackTime) > (now - p2.lastAttackTime)) {
-            first = p1; second = p2;
-        } else {
-            first = p2; second = p1;
-        }
-    } else if (p1Can) {
-        first = p1; second = p2;
-    } else {
-        first = p2; second = p1;
-    }
-    
+        first = (now - p1.lastAttackTime) > (now - p2.lastAttackTime) ? p1 : p2;
+        second = first === p1 ? p2 : p1;
+    } else if (p1Can) { first = p1; second = p2; }
+    else { first = p2; second = p1; }
     const result = { firstHit: null, secondHit: null };
     const { damage, killed } = first.attack(second, now);
     result.firstHit = { attacker: first.id, target: second.id, damage, killed };
-    
-    if (second && second.alive && second.canAttack(now) && !killed) {
+    if (second.alive && second.canAttack(now) && !killed) {
         const { damage: d2, killed: k2 } = second.attack(first, now);
         result.secondHit = { attacker: second.id, target: first.id, damage: d2, killed: k2 };
     }
@@ -200,16 +223,13 @@ function updateMovement(deltaTime) {
         if (!p.alive) continue;
         let newX = p.x + p.dx * p.speed * deltaTime;
         let newY = p.y + p.dy * p.speed * deltaTime;
-        // Validar que el nuevo punto esté sobre arena (isla)
         if (isLand(newX, newY)) {
             p.x = newX;
             p.y = newY;
         } else {
-            // Si el movimiento lo lleva al agua, no se mueve y se frena
             p.dx = 0;
             p.dy = 0;
         }
-        // Clamp adicional por seguridad
         clampToLand(p);
     }
 }
@@ -219,30 +239,21 @@ function handleCollisionsAndCombat(now) {
     for (let i = 0; i < ids.length; i++) {
         const p1 = players[ids[i]];
         if (!p1.alive) continue;
-        for (let j = i + 1; j < ids.length; j++) {
+        for (let j = i+1; j < ids.length; j++) {
             const p2 = players[ids[j]];
             if (!p2.alive) continue;
             const dx = p1.x - p2.x;
             const dy = p1.y - p2.y;
             const dist = Math.hypot(dx, dy);
-            const minDist = PLAYER_RADIUS * 2;
-            if (dist < minDist) {
+            if (dist < PLAYER_RADIUS * 2) {
                 const angle = Math.atan2(dy, dx);
-                const overlap = minDist - dist;
+                const overlap = (PLAYER_RADIUS * 2) - dist;
                 const moveX = Math.cos(angle) * overlap / 2;
                 const moveY = Math.sin(angle) * overlap / 2;
-                let newX1 = p1.x + moveX;
-                let newY1 = p1.y + moveY;
-                let newX2 = p2.x - moveX;
-                let newY2 = p2.y - moveY;
-                // Solo aplicar si no se salen de la isla (si se salen, se clampa después)
-                p1.x = newX1;
-                p1.y = newY1;
-                p2.x = newX2;
-                p2.y = newY2;
+                p1.x += moveX; p1.y += moveY;
+                p2.x -= moveX; p2.y -= moveY;
                 clampToLand(p1);
                 clampToLand(p2);
-                
                 const combat = resolveCombat(p1, p2, now);
                 if (combat) {
                     if (combat.firstHit) sendDamageEvent(combat.firstHit);
@@ -256,21 +267,11 @@ function handleCollisionsAndCombat(now) {
 function sendDamageEvent(hit) {
     const attacker = players[hit.attacker];
     const target = players[hit.target];
-    if (attacker && attacker.ws && attacker.ws.readyState === WebSocket.OPEN) {
-        attacker.ws.send(JSON.stringify({
-            type: 'damage',
-            damage: hit.damage,
-            target: hit.target,
-            killed: hit.killed
-        }));
+    if (attacker && attacker.ws.readyState === WebSocket.OPEN) {
+        attacker.ws.send(JSON.stringify({ type: 'damage', damage: hit.damage, target: hit.target, killed: hit.killed }));
     }
-    if (target && target.ws && target.ws.readyState === WebSocket.OPEN) {
-        target.ws.send(JSON.stringify({
-            type: 'damage',
-            damage: hit.damage,
-            from: hit.attacker,
-            killed: hit.killed
-        }));
+    if (target && target.ws.readyState === WebSocket.OPEN) {
+        target.ws.send(JSON.stringify({ type: 'damage', damage: hit.damage, from: hit.attacker, killed: hit.killed }));
     }
 }
 
@@ -287,12 +288,8 @@ function applyZoneDamage(now) {
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
-        const dx = p.x - zoneCenter.x;
-        const dy = p.y - zoneCenter.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > zoneRadius) {
-            p.takeDamage(ZONE_DAMAGE_PER_SECOND);
-        }
+        const dist = Math.hypot(p.x - zoneCenter.x, p.y - zoneCenter.y);
+        if (dist > zoneRadius) p.takeDamage(ZONE_DAMAGE_PER_SECOND);
     }
 }
 
@@ -304,42 +301,26 @@ function processRespawns() {
             p.alive = true;
             p.health = 100;
             p.lastAttackTime = 0;
-            p.dx = 0;
-            p.dy = 0;
-            // Respawnea en un punto aleatorio de arena dentro de la zona segura actual
-            let attempts = 0;
+            p.dx = p.dy = 0;
             let placed = false;
-            while (attempts < 100 && !placed) {
-                const safeRadius = Math.min(zoneRadius, WORLD_SIZE / 2);
+            for (let attempts = 0; attempts < 100; attempts++) {
+                const safeRadius = Math.min(zoneRadius, WORLD_SIZE/2);
                 const angle = Math.random() * 2 * Math.PI;
                 const radius = Math.random() * safeRadius;
                 let x = zoneCenter.x + Math.cos(angle) * radius;
                 let y = zoneCenter.y + Math.sin(angle) * radius;
                 x = Math.min(Math.max(x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
                 y = Math.min(Math.max(y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-                if (isLand(x, y)) {
-                    p.x = x;
-                    p.y = y;
-                    placed = true;
-                }
-                attempts++;
+                if (isLand(x, y)) { p.x = x; p.y = y; placed = true; break; }
             }
-            if (!placed) {
-                const fallback = getRandomLandPosition();
-                p.x = fallback.x;
-                p.y = fallback.y;
-            }
+            if (!placed) { const fallback = getRandomLandPosition(); p.x = fallback.x; p.y = fallback.y; }
             p.respawnTime = null;
         }
     }
 }
 
 function removeDeadPlayers() {
-    for (let id in players) {
-        if (players[id].ws.readyState !== WebSocket.OPEN) {
-            delete players[id];
-        }
-    }
+    for (let id in players) if (players[id].ws.readyState !== WebSocket.OPEN) delete players[id];
 }
 
 function broadcastGameState() {
@@ -352,23 +333,10 @@ function broadcastGameState() {
     };
     for (let id in players) {
         const p = players[id];
-        state.players[id] = {
-            id: p.id,
-            x: p.x,
-            y: p.y,
-            health: p.health,
-            alive: p.alive,
-            lastAttackTime: p.lastAttackTime,
-            color: p.color
-        };
+        state.players[id] = { id: p.id, x: p.x, y: p.y, health: p.health, alive: p.alive, lastAttackTime: p.lastAttackTime, color: p.color };
     }
     const msg = JSON.stringify(state);
-    for (let id in players) {
-        const p = players[id];
-        if (p.ws && p.ws.readyState === WebSocket.OPEN) {
-            p.ws.send(msg);
-        }
-    }
+    for (let id in players) if (players[id].ws.readyState === WebSocket.OPEN) players[id].ws.send(msg);
 }
 
 let lastTimestamp = Date.now() / 1000;
@@ -392,15 +360,10 @@ wss.on("connection", (ws) => {
     ws.send(JSON.stringify({ type: 'init', id: id }));
     ws.on("message", (msg) => {
         const data = JSON.parse(msg);
-        if (data.type === "move") {
-            const p = players[id];
-            if (p && p.alive) {
-                p.dx = data.dx;
-                p.dy = data.dy;
-            }
+        if (data.type === "move" && players[id] && players[id].alive) {
+            players[id].dx = data.dx;
+            players[id].dy = data.dy;
         }
     });
-    ws.on("close", () => {
-        delete players[id];
-    });
+    ws.on("close", () => delete players[id]);
 });
