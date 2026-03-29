@@ -193,11 +193,11 @@ canvas { display:block; cursor: crosshair; }
 
 <script>
 (function() {
-    // ==================== CONSTANTES DEL MUNDO ====================
-    const WORLD_SIZE = 2400;
+    // ==================== CONSTANTES DEL MUNDO (MUCHO MÁS GRANDE) ====================
+    const WORLD_SIZE = 4000;          // Enorme: 4000x4000
     const WORLD_CENTER = WORLD_SIZE / 2;
     
-    // ==================== PERLIN NOISE MEJORADO ====================
+    // ==================== PERLIN NOISE AVANZADO ====================
     const grad3 = [
         [1,1,0], [-1,1,0], [1,-1,0], [-1,-1,0],
         [1,0,1], [-1,0,1], [1,0,-1], [-1,0,-1],
@@ -251,7 +251,7 @@ canvas { display:block; cursor: crosshair; }
     }
     seed(42);
     
-    // Ruido fractal con múltiples octavas para bordes muy irregulares
+    // Ruido fractal (fbm) con 5 octavas para bordes muy irregulares
     function fbm(x, y, octaves, persistence, lacunarity) {
         let value = 0;
         let amplitude = 1;
@@ -263,51 +263,55 @@ canvas { display:block; cursor: crosshair; }
             amplitude *= persistence;
             frequency *= lacunarity;
         }
-        return value / maxValue; // Normalizado entre -1 y 1 aprox
+        return value / maxValue; // Rango [-1, 1] aprox
     }
     
-    // ==================== GENERACIÓN DE MÁSCARA DE ISLA (CONTINENTE CON BORDES PIXELADOS) ====================
-    function generateIslandMask() {
+    // ==================== GENERACIÓN DEL MAPA CON BIOMAS Y SIN AGUA INTERIOR ====================
+    let terrainMap = null;      // Almacena tipo de terreno: 0=agua, 1=arena, 2=pasto, 3=bosque, 4=montaña
+    let mapCanvas = null;
+    
+    function generateTerrain() {
         const mask = new Array(WORLD_SIZE);
-        const centerX = WORLD_CENTER, centerY = WORLD_CENTER;
-        const maxDist = WORLD_SIZE / 2 - 40; // dejar un poco de agua en los bordes extremos
+        const heightMap = new Array(WORLD_SIZE);
+        const maxDist = WORLD_SIZE / 2 - 80;
         
+        // Paso 1: Generar altura base con ruido
         for (let x = 0; x < WORLD_SIZE; x++) {
             mask[x] = new Array(WORLD_SIZE);
+            heightMap[x] = new Array(WORLD_SIZE);
             for (let y = 0; y < WORLD_SIZE; y++) {
-                const dx = x - centerX;
-                const dy = y - centerY;
+                const dx = x - WORLD_CENTER;
+                const dy = y - WORLD_CENTER;
                 const dist = Math.hypot(dx, dy);
                 
-                // Escala del ruido (frecuencias altas para bordes muy irregulares)
-                const nx = x / 180;
-                const ny = y / 180;
-                // Usamos 5 octavas para mucho detalle y bordes pixelados/irregulares
-                let noiseVal = fbm(nx, ny, 5, 0.55, 2.1);
-                // Añadimos una octava extra de alta frecuencia para más pixelado
-                noiseVal += 0.3 * perlin2D(x / 45, y / 45);
+                // Ruido de alta frecuencia para bordes pixelados
+                const nx = x / 210;
+                const ny = y / 210;
+                let noiseVal = fbm(nx, ny, 6, 0.55, 2.1);
+                // Añadir octava extra de alta frecuencia para más detalle
+                noiseVal += 0.25 * perlin2D(x / 55, y / 55);
                 noiseVal = (noiseVal + 1) / 2; // Mapear a [0,1]
                 
-                // Factor radial para que los bordes sean agua, pero el centro sea siempre tierra
+                // Factor radial para asegurar que los bordes sean agua y el centro tierra sólida
                 let radialFactor = 1.0;
                 if (dist > maxDist * 0.65) {
-                    // Caída más abrupta para crear acantilados pixelados
-                    radialFactor = 1.0 - Math.pow((dist - maxDist*0.65) / (maxDist*0.35), 1.5);
+                    radialFactor = 1.0 - Math.pow((dist - maxDist*0.65) / (maxDist*0.35), 1.4);
                     radialFactor = Math.max(0, Math.min(1, radialFactor));
                 }
-                // Añadimos un sesgo para garantizar que el centro es tierra firme
+                // Sesgo central fuerte para eliminar lagos internos
                 let centerBias = 1.0;
-                if (dist < 200) centerBias = 1.2; // fuerza tierra en el núcleo
-                
+                if (dist < 250) centerBias = 1.3;
                 const landValue = noiseVal * radialFactor * centerBias;
-                // Umbral bajo para que la isla sea grande y compacta, pero con bordes muy recortados
-                const isLand = landValue > 0.38 && dist < maxDist - 15;
+                heightMap[x][y] = landValue;
+                
+                // Umbral de tierra/agua (sin lagos internos porque el centro está forzado)
+                const isLand = landValue > 0.42 && dist < maxDist - 20;
                 mask[x][y] = isLand;
             }
         }
         
-        // Rellenar pequeños agujeros interiores (para evitar lagos no deseados en el continente)
-        for (let i = 0; i < 8; i++) {
+        // Paso 2: Rellenar agujeros interiores (eliminar charcos de agua)
+        for (let iter = 0; iter < 12; iter++) {
             for (let x = 1; x < WORLD_SIZE-1; x++) {
                 for (let y = 1; y < WORLD_SIZE-1; y++) {
                     if (!mask[x][y]) {
@@ -323,66 +327,78 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         
-        // Asegurar que el centro y un área amplia alrededor sean tierra firme
-        for (let dx = -180; dx <= 180; dx++) {
-            for (let dy = -180; dy <= 180; dy++) {
-                const cx = WORLD_CENTER + dx, cy = WORLD_CENTER + dy;
-                if (cx >= 0 && cx < WORLD_SIZE && cy >= 0 && cy < WORLD_SIZE) {
-                    if (Math.hypot(dx, dy) < 150) mask[cx][cy] = true;
+        // Paso 3: Asignar biomas (0=agua, 1=arena, 2=pasto, 3=bosque, 4=montaña)
+        const biomeMap = new Array(WORLD_SIZE);
+        for (let x = 0; x < WORLD_SIZE; x++) {
+            biomeMap[x] = new Array(WORLD_SIZE);
+            for (let y = 0; y < WORLD_SIZE; y++) {
+                if (!mask[x][y]) {
+                    biomeMap[x][y] = 0; // agua
+                    continue;
+                }
+                const height = heightMap[x][y];
+                // Detectar costa (cerca de agua)
+                let isCoast = false;
+                for (let dx = -3; dx <= 3; dx++) {
+                    for (let dy = -3; dy <= 3; dy++) {
+                        const nx = x+dx, ny = y+dy;
+                        if (nx>=0 && nx<WORLD_SIZE && ny>=0 && ny<WORLD_SIZE && !mask[nx][ny]) {
+                            isCoast = true;
+                            break;
+                        }
+                    }
+                }
+                if (isCoast) {
+                    biomeMap[x][y] = 1; // arena (playa)
+                } else if (height > 0.75) {
+                    biomeMap[x][y] = 4; // montaña
+                } else if (height > 0.58) {
+                    biomeMap[x][y] = 3; // bosque
+                } else {
+                    biomeMap[x][y] = 2; // pasto
                 }
             }
         }
         
-        return mask;
+        return { landMask: mask, biomeMap: biomeMap };
     }
     
-    let islandMask = null;
-    let mapCanvas = null;
+    let landMask = null;
+    let biomeMap = null;
     
     function buildTerrainCanvas() {
-        if (!islandMask) islandMask = generateIslandMask();
         const canvasOff = document.createElement('canvas');
         canvasOff.width = WORLD_SIZE;
         canvasOff.height = WORLD_SIZE;
         const offCtx = canvasOff.getContext('2d');
         
-        // Océano celeste
-        offCtx.fillStyle = "#7ec8e0";
+        // Fondo de océano
+        offCtx.fillStyle = "#3b9bd5";
         offCtx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
         
-        // Dibujar arena con textura de ruido para más realismo
+        // Dibujar biomas
         for (let y = 0; y < WORLD_SIZE; y++) {
             for (let x = 0; x < WORLD_SIZE; x++) {
-                if (islandMask[x][y]) {
-                    // Variación de color basada en ruido para dar textura pixelada
-                    const val = perlin2D(x / 35, y / 35) * 0.5 + 0.5;
-                    const variation = Math.floor(val * 25);
-                    let r = 0xe0 - variation;
-                    let g = 0xb0 - variation * 0.5;
-                    let b = 0x5a - variation * 0.3;
-                    r = Math.min(255, Math.max(190, r));
-                    g = Math.min(255, Math.max(140, g));
-                    b = Math.min(255, Math.max(70, b));
-                    offCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-                    offCtx.fillRect(x, y, 1, 1);
+                const biome = biomeMap[x][y];
+                let color;
+                switch(biome) {
+                    case 1: color = "#e8d174"; break; // arena
+                    case 2: color = "#7cb518"; break; // pasto
+                    case 3: color = "#2d6a4f"; break; // bosque
+                    case 4: color = "#8b5a2b"; break; // montaña
+                    default: continue; // agua
                 }
-            }
-        }
-        
-        // Detalles: puntos oscuros (rocas, sombras) más densos en bordes
-        offCtx.fillStyle = "#aa8844";
-        for (let i = 0; i < 15000; i++) {
-            const x = Math.floor(Math.random() * WORLD_SIZE);
-            const y = Math.floor(Math.random() * WORLD_SIZE);
-            if (islandMask[x] && islandMask[x][y]) {
+                offCtx.fillStyle = color;
                 offCtx.fillRect(x, y, 1, 1);
             }
         }
-        offCtx.fillStyle = "#6a4a2a";
-        for (let i = 0; i < 8000; i++) {
+        
+        // Añadir detalles (puntos oscuros para textura)
+        offCtx.fillStyle = "#5a3e1a";
+        for (let i = 0; i < 20000; i++) {
             const x = Math.floor(Math.random() * WORLD_SIZE);
             const y = Math.floor(Math.random() * WORLD_SIZE);
-            if (islandMask[x] && islandMask[x][y]) {
+            if (biomeMap[x][y] === 2 || biomeMap[x][y] === 3) {
                 offCtx.fillRect(x, y, 1, 1);
             }
         }
@@ -390,12 +406,18 @@ canvas { display:block; cursor: crosshair; }
     }
     
     function isLandAt(worldX, worldY) {
-        if (!islandMask) return true;
+        if (!landMask) return true;
         const ix = Math.floor(worldX);
         const iy = Math.floor(worldY);
         if (ix < 0 || ix >= WORLD_SIZE || iy < 0 || iy >= WORLD_SIZE) return false;
-        return islandMask[ix][iy] === true;
+        return landMask[ix][iy] === true;
     }
+    
+    // Generar todo al inicio
+    const { landMask: mask, biomeMap: biomes } = generateTerrain();
+    landMask = mask;
+    biomeMap = biomes;
+    mapCanvas = buildTerrainCanvas();
     
     // ==================== FIN GENERACIÓN MAPA ====================
     
@@ -405,7 +427,7 @@ canvas { display:block; cursor: crosshair; }
     let myId = null;
     let players = {};
     let serverPlayers = {};
-    let zone = { x: WORLD_CENTER, y: WORLD_CENTER, radius: 1100 };
+    let zone = { x: WORLD_CENTER, y: WORLD_CENTER, radius: 1800 };
     let aliveCount = 0;
     let localPlayerHealth = 100;
     let lastAttackTime = 0;
@@ -548,9 +570,6 @@ canvas { display:block; cursor: crosshair; }
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
     resize();
     window.addEventListener("resize", resize);
-
-    islandMask = generateIslandMask();
-    mapCanvas = buildTerrainCanvas();
 
     const ws = new WebSocket(location.origin.replace("http", "ws"));
 
@@ -764,7 +783,7 @@ canvas { display:block; cursor: crosshair; }
         ctx.font = "bold 14px monospace";
         ctx.fillStyle = "white";
         ctx.fillText(`🌊 Zona segura: ${Math.floor(zone.radius)}m`, 20, 70);
-        if (zone.radius < 300) ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
+        if (zone.radius < 400) ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
     }
 
     function updateRespawnMessage() {
