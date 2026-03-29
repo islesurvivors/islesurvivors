@@ -16,14 +16,58 @@ const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
 
+// ===== ZONA SEGURA =====
+const SAFE_ZONE_CENTER_X = WORLD_SIZE / 2;
+const SAFE_ZONE_CENTER_Y = WORLD_SIZE / 2;
+const SAFE_ZONE_SIZE = 260;
+const SAFE_HALF = SAFE_ZONE_SIZE / 2;
+
+function isInsideSafeZone(x, y) {
+    return (
+        Math.abs(x - SAFE_ZONE_CENTER_X) <= (SAFE_HALF - PLAYER_RADIUS) &&
+        Math.abs(y - SAFE_ZONE_CENTER_Y) <= (SAFE_HALF - PLAYER_RADIUS)
+    );
+}
+
+function getSafeSpawnPosition() {
+    const maxOffset = Math.max(0, SAFE_HALF - PLAYER_RADIUS - 12);
+    return {
+        x: SAFE_ZONE_CENTER_X + (Math.random() * 2 - 1) * maxOffset,
+        y: SAFE_ZONE_CENTER_Y + (Math.random() * 2 - 1) * maxOffset
+    };
+}
+
+function killByWater(p) {
+    if (!p.alive) return false;
+    p.health = 0;
+    p.alive = false;
+    p.dx = 0;
+    p.dy = 0;
+    p.respawnTime = Date.now() + 5000;
+    return true;
+}
+
+function handleWaterDeaths() {
+    for (let id in players) {
+        const p = players[id];
+        if (p.alive && !isInsideSafeZone(p.x, p.y)) {
+            killByWater(p);
+        }
+    }
+}
+// =======================
+
 let players = {};
 
 class Player {
     constructor(id, ws) {
         this.id = id;
         this.ws = ws;
-        this.x = Math.random() * (WORLD_SIZE - PLAYER_RADIUS * 2) + PLAYER_RADIUS;
-        this.y = Math.random() * (WORLD_SIZE - PLAYER_RADIUS * 2) + PLAYER_RADIUS;
+
+        const spawn = getSafeSpawnPosition();
+        this.x = spawn.x;
+        this.y = spawn.y;
+
         this.health = 100;
         this.lastAttackTime = 0;
         this.dx = 0;
@@ -145,21 +189,11 @@ function handleCollisionsAndCombat(now) {
 function sendDamageEvent(hit) {
     const attacker = players[hit.attacker];
     const target = players[hit.target];
-    if (attacker && attacker.ws && attacker.ws.readyState === WebSocket.OPEN) {
-        attacker.ws.send(JSON.stringify({
-            type: 'damage',
-            damage: hit.damage,
-            target: hit.target,
-            killed: hit.killed
-        }));
+    if (attacker && attacker.ws.readyState === WebSocket.OPEN) {
+        attacker.ws.send(JSON.stringify({ type: 'damage', damage: hit.damage, target: hit.target, killed: hit.killed }));
     }
-    if (target && target.ws && target.ws.readyState === WebSocket.OPEN) {
-        target.ws.send(JSON.stringify({
-            type: 'damage',
-            damage: hit.damage,
-            from: hit.attacker,
-            killed: hit.killed
-        }));
+    if (target && target.ws.readyState === WebSocket.OPEN) {
+        target.ws.send(JSON.stringify({ type: 'damage', damage: hit.damage, from: hit.attacker, killed: hit.killed }));
     }
 }
 
@@ -173,8 +207,11 @@ function processRespawns() {
             p.lastAttackTime = 0;
             p.dx = 0;
             p.dy = 0;
-            p.x = Math.random() * (WORLD_SIZE - PLAYER_RADIUS * 2) + PLAYER_RADIUS;
-            p.y = Math.random() * (WORLD_SIZE - PLAYER_RADIUS * 2) + PLAYER_RADIUS;
+
+            const spawn = getSafeSpawnPosition();
+            p.x = spawn.x;
+            p.y = spawn.y;
+
             p.respawnTime = null;
         }
     }
@@ -210,7 +247,7 @@ function broadcastGameState() {
     const msg = JSON.stringify(state);
     for (let id in players) {
         const p = players[id];
-        if (p.ws && p.ws.readyState === WebSocket.OPEN) {
+        if (p.ws.readyState === WebSocket.OPEN) {
             p.ws.send(msg);
         }
     }
@@ -221,8 +258,11 @@ setInterval(() => {
     const now = Date.now() / 1000;
     const delta = Math.min(0.033, now - lastTimestamp);
     lastTimestamp = now;
+
     updateMovement(delta);
+    handleWaterDeaths();
     handleCollisionsAndCombat(now);
+    handleWaterDeaths();
     processRespawns();
     removeDeadPlayers();
     broadcastGameState();
@@ -232,7 +272,9 @@ wss.on("connection", (ws) => {
     const id = Math.random().toString(36).substr(2, 9);
     const player = new Player(id, ws);
     players[id] = player;
+
     ws.send(JSON.stringify({ type: 'init', id: id }));
+
     ws.on("message", (msg) => {
         const data = JSON.parse(msg);
         if (data.type === "move") {
@@ -243,6 +285,7 @@ wss.on("connection", (ws) => {
             }
         }
     });
+
     ws.on("close", () => {
         delete players[id];
     });
