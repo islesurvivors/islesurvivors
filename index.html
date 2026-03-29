@@ -193,309 +193,156 @@ canvas { display:block; cursor: crosshair; }
 
 <script>
 (function() {
-    // ==================== CONSTANTES DEL MUNDO (MUCHO MÁS GRANDE) ====================
-    const WORLD_SIZE = 4000;          // Enorme: 4000x4000
-    const WORLD_CENTER = WORLD_SIZE / 2;
-    
-    // ==================== PERLIN NOISE AVANZADO ====================
-    const grad3 = [
-        [1,1,0], [-1,1,0], [1,-1,0], [-1,-1,0],
-        [1,0,1], [-1,0,1], [1,0,-1], [-1,0,-1],
-        [0,1,1], [0,-1,1], [0,1,-1], [0,-1,-1]
-    ];
-    const p = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-        190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,
-        171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,
-        245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,
-        164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,
-        58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,
-        98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,
-        235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,
-        114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
-    let perm = new Array(512);
-    let gradP = new Array(512);
-    
-    function seed(seedValue) {
-        if (seedValue > 0 && seedValue < 1) seedValue *= 65536;
-        seedValue = Math.floor(seedValue);
-        let oldp = [...p];
-        for (let i = 0; i < 256; i++) {
-            let v = (i + seedValue) % 256;
-            perm[i] = perm[i+256] = oldp[v];
-            gradP[i] = gradP[i+256] = grad3[perm[i] % grad3.length];
-        }
-    }
-    function dot(g, x, y) { return g[0]*x + g[1]*y; }
-    function fade(t) { return t*t*t*(t*(t*6 - 15) + 10); }
-    function lerp(a, b, t) { return a + t*(b - a); }
-    function perlin2D(x, y) {
-        let X = Math.floor(x) & 255;
-        let Y = Math.floor(y) & 255;
-        x -= Math.floor(x);
-        y -= Math.floor(y);
-        let u = fade(x);
-        let v = fade(y);
-        let aa = perm[X] + Y;
-        let ab = perm[X] + Y + 1;
-        let ba = perm[X+1] + Y;
-        let bb = perm[X+1] + Y + 1;
-        let g00 = gradP[aa], g10 = gradP[ba];
-        let g01 = gradP[ab], g11 = gradP[bb];
-        let n00 = dot(g00, x, y);
-        let n10 = dot(g10, x-1, y);
-        let n01 = dot(g01, x, y-1);
-        let n11 = dot(g11, x-1, y-1);
-        let nx0 = lerp(n00, n10, u);
-        let nx1 = lerp(n01, n11, u);
-        return lerp(nx0, nx1, v);
-    }
-    seed(42);
-    
-    // Ruido fractal (fbm) con 5 octavas para bordes muy irregulares
-    function fbm(x, y, octaves, persistence, lacunarity) {
-        let value = 0;
-        let amplitude = 1;
-        let frequency = 1;
-        let maxValue = 0;
-        for (let i = 0; i < octaves; i++) {
-            value += amplitude * perlin2D(x * frequency, y * frequency);
-            maxValue += amplitude;
-            amplitude *= persistence;
-            frequency *= lacunarity;
-        }
-        return value / maxValue; // Rango [-1, 1] aprox
-    }
-    
-    // ==================== GENERACIÓN DEL MAPA CON BIOMAS Y SIN AGUA INTERIOR ====================
-    let terrainMap = null;      // Almacena tipo de terreno: 0=agua, 1=arena, 2=pasto, 3=bosque, 4=montaña
-    let mapCanvas = null;
-    
-    function generateTerrain() {
-        const mask = new Array(WORLD_SIZE);
-        const heightMap = new Array(WORLD_SIZE);
-        const maxDist = WORLD_SIZE / 2 - 80;
-        
-        // Paso 1: Generar altura base con ruido
-        for (let x = 0; x < WORLD_SIZE; x++) {
-            mask[x] = new Array(WORLD_SIZE);
-            heightMap[x] = new Array(WORLD_SIZE);
-            for (let y = 0; y < WORLD_SIZE; y++) {
-                const dx = x - WORLD_CENTER;
-                const dy = y - WORLD_CENTER;
-                const dist = Math.hypot(dx, dy);
-                
-                // Ruido de alta frecuencia para bordes pixelados
-                const nx = x / 210;
-                const ny = y / 210;
-                let noiseVal = fbm(nx, ny, 6, 0.55, 2.1);
-                // Añadir octava extra de alta frecuencia para más detalle
-                noiseVal += 0.25 * perlin2D(x / 55, y / 55);
-                noiseVal = (noiseVal + 1) / 2; // Mapear a [0,1]
-                
-                // Factor radial para asegurar que los bordes sean agua y el centro tierra sólida
-                let radialFactor = 1.0;
-                if (dist > maxDist * 0.65) {
-                    radialFactor = 1.0 - Math.pow((dist - maxDist*0.65) / (maxDist*0.35), 1.4);
-                    radialFactor = Math.max(0, Math.min(1, radialFactor));
-                }
-                // Sesgo central fuerte para eliminar lagos internos
-                let centerBias = 1.0;
-                if (dist < 250) centerBias = 1.3;
-                const landValue = noiseVal * radialFactor * centerBias;
-                heightMap[x][y] = landValue;
-                
-                // Umbral de tierra/agua (sin lagos internos porque el centro está forzado)
-                const isLand = landValue > 0.42 && dist < maxDist - 20;
-                mask[x][y] = isLand;
-            }
-        }
-        
-        // Paso 2: Rellenar agujeros interiores (eliminar charcos de agua)
-        for (let iter = 0; iter < 12; iter++) {
-            for (let x = 1; x < WORLD_SIZE-1; x++) {
-                for (let y = 1; y < WORLD_SIZE-1; y++) {
-                    if (!mask[x][y]) {
-                        let neighbors = 0;
-                        for (let dx = -1; dx <= 1; dx++) {
-                            for (let dy = -1; dy <= 1; dy++) {
-                                if (mask[x+dx][y+dy]) neighbors++;
-                            }
-                        }
-                        if (neighbors >= 7) mask[x][y] = true;
-                    }
-                }
-            }
-        }
-        
-        // Paso 3: Asignar biomas (0=agua, 1=arena, 2=pasto, 3=bosque, 4=montaña)
-        const biomeMap = new Array(WORLD_SIZE);
-        for (let x = 0; x < WORLD_SIZE; x++) {
-            biomeMap[x] = new Array(WORLD_SIZE);
-            for (let y = 0; y < WORLD_SIZE; y++) {
-                if (!mask[x][y]) {
-                    biomeMap[x][y] = 0; // agua
-                    continue;
-                }
-                const height = heightMap[x][y];
-                // Detectar costa (cerca de agua)
-                let isCoast = false;
-                for (let dx = -3; dx <= 3; dx++) {
-                    for (let dy = -3; dy <= 3; dy++) {
-                        const nx = x+dx, ny = y+dy;
-                        if (nx>=0 && nx<WORLD_SIZE && ny>=0 && ny<WORLD_SIZE && !mask[nx][ny]) {
-                            isCoast = true;
-                            break;
-                        }
-                    }
-                }
-                if (isCoast) {
-                    biomeMap[x][y] = 1; // arena (playa)
-                } else if (height > 0.75) {
-                    biomeMap[x][y] = 4; // montaña
-                } else if (height > 0.58) {
-                    biomeMap[x][y] = 3; // bosque
-                } else {
-                    biomeMap[x][y] = 2; // pasto
-                }
-            }
-        }
-        
-        return { landMask: mask, biomeMap: biomeMap };
-    }
-    
-    let landMask = null;
-    let biomeMap = null;
-    
-    function buildTerrainCanvas() {
-        const canvasOff = document.createElement('canvas');
-        canvasOff.width = WORLD_SIZE;
-        canvasOff.height = WORLD_SIZE;
-        const offCtx = canvasOff.getContext('2d');
-        
-        // Fondo de océano
-        offCtx.fillStyle = "#3b9bd5";
-        offCtx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
-        
-        // Dibujar biomas
-        for (let y = 0; y < WORLD_SIZE; y++) {
-            for (let x = 0; x < WORLD_SIZE; x++) {
-                const biome = biomeMap[x][y];
-                let color;
-                switch(biome) {
-                    case 1: color = "#e8d174"; break; // arena
-                    case 2: color = "#7cb518"; break; // pasto
-                    case 3: color = "#2d6a4f"; break; // bosque
-                    case 4: color = "#8b5a2b"; break; // montaña
-                    default: continue; // agua
-                }
-                offCtx.fillStyle = color;
-                offCtx.fillRect(x, y, 1, 1);
-            }
-        }
-        
-        // Añadir detalles (puntos oscuros para textura)
-        offCtx.fillStyle = "#5a3e1a";
-        for (let i = 0; i < 20000; i++) {
-            const x = Math.floor(Math.random() * WORLD_SIZE);
-            const y = Math.floor(Math.random() * WORLD_SIZE);
-            if (biomeMap[x][y] === 2 || biomeMap[x][y] === 3) {
-                offCtx.fillRect(x, y, 1, 1);
-            }
-        }
-        return canvasOff;
-    }
-    
-    function isLandAt(worldX, worldY) {
-        if (!landMask) return true;
-        const ix = Math.floor(worldX);
-        const iy = Math.floor(worldY);
-        if (ix < 0 || ix >= WORLD_SIZE || iy < 0 || iy >= WORLD_SIZE) return false;
-        return landMask[ix][iy] === true;
-    }
-    
-    // Generar todo al inicio
-    const { landMask: mask, biomeMap: biomes } = generateTerrain();
-    landMask = mask;
-    biomeMap = biomes;
-    mapCanvas = buildTerrainCanvas();
-    
-    // ==================== FIN GENERACIÓN MAPA ====================
-    
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
 
     let myId = null;
     let players = {};
     let serverPlayers = {};
-    let zone = { x: WORLD_CENTER, y: WORLD_CENTER, radius: 1800 };
+    let zone = { x: 800, y: 800, radius: 700 };
     let aliveCount = 0;
     let localPlayerHealth = 100;
     let lastAttackTime = 0;
     let attackCooldown = 0.8;
 
-    const keyState = { w: false, s: false, a: false, d: false };
+    const keyState = {
+        w: false,
+        s: false,
+        a: false,
+        d: false
+    };
+    
     let input = { dx: 0, dy: 0 };
     
-    let moveTarget = null;
-    const STOP_DISTANCE = 12.0;
-    let recentTouch = false;
-    let isClickMoving = false;
+    // ===================== POINT & CLICK (DESKTOP) =====================
+    let moveTarget = null;           // { x, y } en coordenadas del mundo
+    const STOP_DISTANCE = 12.0;      // distancia para considerar que llegó al destino
+    let recentTouch = false;          // evita conflictos con eventos táctiles en móvil
+    let isClickMoving = false;        // indica si el movimiento actual es por point-and-click
     
-    function clearMoveTarget() { moveTarget = null; isClickMoving = false; }
+    function clearMoveTarget() {
+        moveTarget = null;
+        isClickMoving = false;
+        // No resetear input.dx/dy aquí porque puede que haya teclado activo.
+        // Se actualizará en updateMoveTargetDirection.
+    }
     
     function setMoveTarget(worldX, worldY) {
         if (!players[myId] || !players[myId].alive) return;
-        if (!isLandAt(worldX, worldY)) return;
         moveTarget = { x: worldX, y: worldY };
-        keyState.w = keyState.s = keyState.a = keyState.d = false;
+        // Al fijar nuevo destino, desactivamos cualquier entrada manual previa (teclado/touch)
+        // para evitar conflictos.
+        keyState.w = false;
+        keyState.s = false;
+        keyState.a = false;
+        keyState.d = false;
         isTouchInput = false;
-        isClickMoving = true;
+        isClickMoving = true;   // activamos el modo click para orientación de sprite
+        // No tocamos input.dx/dy directamente; updateMoveTargetDirection los ajustará.
     }
     
     function updateMoveTargetDirection() {
-        if (!players[myId] || !players[myId].alive) { if (moveTarget) clearMoveTarget(); return; }
-        if (keyState.w || keyState.s || keyState.a || keyState.d || isTouchInput) { if (moveTarget) clearMoveTarget(); return; }
-        if (!moveTarget) { if (input.dx !== 0 || input.dy !== 0) input.dx = input.dy = 0; return; }
+        // Si el jugador local no existe o está muerto, cancelar cualquier destino
+        if (!players[myId] || !players[myId].alive) {
+            if (moveTarget) clearMoveTarget();
+            return;
+        }
+        
+        // Si hay entrada activa por teclado o touch drag, cancelar el movimiento automático
+        if (keyState.w || keyState.s || keyState.a || keyState.d || isTouchInput) {
+            if (moveTarget) clearMoveTarget();
+            return;
+        }
+        
+        // Si no hay destino, no hacemos nada (input se quedará como está, pero si no hay teclado
+        // ni touch, input debería ser 0. Lo aseguramos)
+        if (!moveTarget) {
+            if (input.dx !== 0 || input.dy !== 0) {
+                input.dx = 0;
+                input.dy = 0;
+            }
+            return;
+        }
+        
         const local = players[myId];
         const dxTarget = moveTarget.x - local.x;
         const dyTarget = moveTarget.y - local.y;
         const distance = Math.hypot(dxTarget, dyTarget);
-        if (distance < STOP_DISTANCE) { clearMoveTarget(); input.dx = input.dy = 0; return; }
+        
+        // Si estamos suficientemente cerca, detener y limpiar destino
+        if (distance < STOP_DISTANCE) {
+            clearMoveTarget();
+            input.dx = 0;
+            input.dy = 0;
+            return;
+        }
+        
+        // Calcular vector dirección normalizado hacia el destino
         const mag = distance;
-        input.dx = dxTarget / mag;
-        input.dy = dyTarget / mag;
+        const normX = dxTarget / mag;
+        const normY = dyTarget / mag;
+        input.dx = normX;
+        input.dy = normY;
     }
     
+    // Función para convertir coordenadas de pantalla a mundo (teniendo en cuenta la cámara)
     function screenToWorld(clientX, clientY) {
         const localPlayer = players[myId];
         if (!localPlayer) return { x: 0, y: 0 };
         const camX = localPlayer.x - canvas.width / 2;
         const camY = localPlayer.y - canvas.height / 2;
-        return { x: clientX + camX, y: clientY + camY };
+        const worldX = clientX + camX;
+        const worldY = clientY + camY;
+        return { x: worldX, y: worldY };
     }
     
+    // Manejador de click (point & click) solo para desktop, sin interferir con táctil
     function onCanvasClick(e) {
-        if (recentTouch) { recentTouch = false; return; }
+        // Evitar clicks que vengan de interacción táctil reciente (móvil)
+        if (recentTouch) {
+            recentTouch = false;
+            return;
+        }
+        // Prevenir comportamientos extraños
         e.preventDefault();
+        // Solo actuar si el jugador está vivo y el juego tiene ID
         if (!myId) return;
         if (!players[myId] || !players[myId].alive) return;
+        
+        // Obtener coordenadas del clic en el canvas
         const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
+        const scaleX = canvas.width / rect.width;   // por si hay CSS, pero canvas tamaño real
         const scaleY = canvas.height / rect.height;
         let clickCanvasX = (e.clientX - rect.left) * scaleX;
         let clickCanvasY = (e.clientY - rect.top) * scaleY;
+        // Asegurar límites dentro del canvas
         clickCanvasX = Math.min(Math.max(0, clickCanvasX), canvas.width);
         clickCanvasY = Math.min(Math.max(0, clickCanvasY), canvas.height);
+        
         const worldPos = screenToWorld(clickCanvasX, clickCanvasY);
+        // Establecer nuevo destino (esto desactiva teclado/touch automáticamente)
         setMoveTarget(worldPos.x, worldPos.y);
     }
     
-    function onCanvasContextMenu(e) { e.preventDefault(); return false; }
-    function onTouchStartForClick(e) { recentTouch = true; setTimeout(() => { recentTouch = false; }, 300); }
+    function onCanvasContextMenu(e) {
+        e.preventDefault(); // Evitar menú contextual al hacer click derecho
+        return false;
+    }
+    
+    // Detectar eventos táctiles para marcar "recentTouch" y evitar conflictos de click en móviles
+    function onTouchStartForClick(e) {
+        recentTouch = true;
+        // Limpiar el flag después de un tiempo prudencial (para que no afecte a clicks legítimos)
+        setTimeout(() => { recentTouch = false; }, 300);
+    }
+    
+    // ===================== FIN POINT & CLICK =====================
     
     function updateInputFromKeys() {
-        input.dx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
-        input.dy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
+        let rawDx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
+        let rawDy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
+        input.dx = rawDx;
+        input.dy = rawDy;
     }
     
     function handleKeyDown(e) {
@@ -505,7 +352,12 @@ canvas { display:block; cursor: crosshair; }
         else if (key === 's') { keyState.s = true; changed = true; e.preventDefault(); }
         else if (key === 'a') { keyState.a = true; changed = true; e.preventDefault(); }
         else if (key === 'd') { keyState.d = true; changed = true; e.preventDefault(); }
-        if (changed) { updateInputFromKeys(); isTouchInput = false; if (moveTarget) clearMoveTarget(); }
+        if (changed) {
+            updateInputFromKeys();
+            isTouchInput = false;
+            // Al presionar tecla, cancelamos cualquier destino automático
+            if (moveTarget) clearMoveTarget();
+        }
     }
     
     function handleKeyUp(e) {
@@ -518,8 +370,12 @@ canvas { display:block; cursor: crosshair; }
         if (changed) updateInputFromKeys();
     }
     
+    document.removeEventListener("keydown", window._oldKeyDown);
+    document.removeEventListener("keyup", window._oldKeyUp);
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
+    window._oldKeyDown = handleKeyDown;
+    window._oldKeyUp = handleKeyUp;
     
     let deathTime = null;
     let pingHistory = [];
@@ -542,7 +398,13 @@ canvas { display:block; cursor: crosshair; }
     spriteSheet.onload = () => { spriteLoaded = true; };
     spriteSheet.src = SPRITE_URL;
 
-    const DIRECTION_TO_ROW = { down: 0, up: 1, left: 2, right: 3 };
+    const DIRECTION_TO_ROW = {
+        down: 0,
+        up: 1,
+        left: 2,
+        right: 3
+    };
+
     let animInterval = 0.25;
     const slider = document.getElementById('animSpeedSlider');
     const speedValue = document.getElementById('animSpeedValue');
@@ -556,18 +418,25 @@ canvas { display:block; cursor: crosshair; }
     let playerAnim = {};
     const currentFrameSpan = document.getElementById('currentFrame');
     const timeToNextSpan = document.getElementById('timeToNext');
+
     let isTouchInput = false;
 
     function getPlayerColor(id, isMe, serverColor) {
         if (isMe) return "#88ff88";
         if (serverColor) return serverColor;
         let hash = 0;
-        for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash) + id.charCodeAt(i);
+        for (let i = 0; i < id.length; i++) {
+            hash = ((hash << 5) - hash) + id.charCodeAt(i);
+            hash |= 0;
+        }
         const hue = Math.abs(hash % 360);
         return `hsl(${hue}, 70%, 55%)`;
     }
 
-    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
     resize();
     window.addEventListener("resize", resize);
 
@@ -575,7 +444,9 @@ canvas { display:block; cursor: crosshair; }
 
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
-        if (data.type === 'init') myId = data.id;
+        if (data.type === 'init') {
+            myId = data.id;
+        }
         else if (data.type === 'state') {
             serverPlayers = data.players;
             zone = data.zone;
@@ -589,19 +460,24 @@ canvas { display:block; cursor: crosshair; }
                 if (healthText) healthText.innerText = `${Math.floor(localPlayerHealth)} HP`;
                 lastAttackTime = serverPlayers[myId].lastAttackTime;
             }
-            document.getElementById('aliveCount').innerText = aliveCount;
+            const aliveCountSpan = document.getElementById('aliveCount');
+            if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
             if (data.timestamp) {
                 let rawPing = Date.now() - data.timestamp;
                 if (rawPing < 0) rawPing = 0;
                 pingHistory.push(rawPing);
                 if (pingHistory.length > PING_HISTORY_LEN) pingHistory.shift();
                 const avgPing = Math.round(pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length);
-                document.getElementById('pingValue').innerText = avgPing;
+                const pingSpan = document.getElementById('pingValue');
+                if (pingSpan) pingSpan.innerText = avgPing;
             }
         }
         else if (data.type === 'damage') {
-            if (data.target === myId) showDamageNumber(data.damage, true);
-            else if (data.from === myId) showDamageNumber(data.damage, false, data.target);
+            if (data.target === myId) {
+                showDamageNumber(data.damage, true);
+            } else if (data.from === myId) {
+                showDamageNumber(data.damage, false, data.target);
+            }
         }
     };
 
@@ -622,6 +498,7 @@ canvas { display:block; cursor: crosshair; }
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
         isTouchInput = true;
+        // Al iniciar touch, cancelamos cualquier destino point&click
         if (moveTarget) clearMoveTarget();
     });
     canvas.addEventListener("touchmove", (e) => {
@@ -640,11 +517,16 @@ canvas { display:block; cursor: crosshair; }
         input.dx = 0;
         input.dy = 0;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
+        // Al soltar el touch, no cancelamos destino automáticamente porque ya no hay arrastre
     });
 
+    // ============ Configuración de eventos point & click (desktop) ============
+    // Agregar evento click para movimiento con ratón
     canvas.addEventListener("click", onCanvasClick);
     canvas.addEventListener("contextmenu", onCanvasContextMenu);
+    // Detectar inicios táctiles para evitar falsos clicks en móvil
     canvas.addEventListener("touchstart", onTouchStartForClick);
+    // ==========================================================================
     
     setInterval(() => {
         if (ws.readyState === 1 && myId) {
@@ -658,9 +540,13 @@ canvas { display:block; cursor: crosshair; }
             if (!players[id]) {
                 players[id] = { ...sp };
                 playerAnim[id] = {
-                    frame: 1, directionRow: 0, moving: false,
-                    lastVisualX: sp.x, lastVisualY: sp.y,
-                    nextFrameTime: performance.now() / 1000 + animInterval, idleCounter: 0
+                    frame: 1,
+                    directionRow: 0,
+                    moving: false,
+                    lastVisualX: sp.x,
+                    lastVisualY: sp.y,
+                    nextFrameTime: performance.now() / 1000 + animInterval,
+                    idleCounter: 0
                 };
             } else {
                 players[id].x += (sp.x - players[id].x) * 0.7;
@@ -673,13 +559,23 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
+    // MODIFICACIÓN: lógica de dirección unificada para móvil y point-and-click (prioridad horizontal)
     function getDirectionFromMovement(dx, dy) {
+        // Si es entrada táctil O movimiento por click, usar prioridad horizontal (como en móvil)
         if (isTouchInput || isClickMoving) {
-            if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
-            else if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
+            if (Math.abs(dx) > Math.abs(dy)) {
+                return dx > 0 ? 'right' : 'left';
+            } else if (Math.abs(dy) > 0.01) {
+                return dy > 0 ? 'down' : 'up';
+            }
         } else {
-            if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
-            if (Math.abs(dx) > 0.01) return dx > 0 ? 'right' : 'left';
+            // Prioridad vertical para teclado (comportamiento original)
+            if (Math.abs(dy) > 0.01) {
+                return dy > 0 ? 'down' : 'up';
+            }
+            if (Math.abs(dx) > 0.01) {
+                return dx > 0 ? 'right' : 'left';
+            }
         }
         return null;
     }
@@ -689,34 +585,81 @@ canvas { display:block; cursor: crosshair; }
         for (let id in players) {
             const p = players[id];
             if (!p.alive) continue;
+
             const anim = playerAnim[id];
             if (!anim) continue;
+
             const deltaX = p.x - anim.lastVisualX;
             const deltaY = p.y - anim.lastVisualY;
             const distance = Math.hypot(deltaX, deltaY);
+            
             anim.lastVisualX = p.x;
             anim.lastVisualY = p.y;
-            const isMoving = distance > 0.5;
+            
+            const MOVEMENT_THRESHOLD = 0.5;
+            const DIRECTION_THRESHOLD = 2.0;
+            
+            const isMoving = distance > MOVEMENT_THRESHOLD;
+            
             if (isMoving) {
                 anim.idleCounter = 0;
-                if (!anim.moving) { anim.moving = true; anim.frame = 0; anim.nextFrameTime = now + animInterval; }
-            } else if (anim.moving && ++anim.idleCounter >= 3) { anim.moving = false; anim.frame = 1; }
-            if (distance > 2.0) {
+                if (!anim.moving) {
+                    anim.moving = true;
+                    anim.frame = 0;
+                    anim.nextFrameTime = now + animInterval;
+                }
+            } else {
+                if (anim.moving) {
+                    anim.idleCounter++;
+                    if (anim.idleCounter >= 3) {
+                        anim.moving = false;
+                        anim.frame = 1;
+                    }
+                }
+            }
+            
+            if (distance > DIRECTION_THRESHOLD) {
                 const direction = getDirectionFromMovement(deltaX, deltaY);
                 if (direction) {
                     const newRow = DIRECTION_TO_ROW[direction];
                     if (anim.directionRow !== newRow) {
                         anim.directionRow = newRow;
-                        if (anim.moving) { anim.frame = 0; anim.nextFrameTime = now + animInterval; }
+                        if (anim.moving) {
+                            anim.frame = 0;
+                            anim.nextFrameTime = now + animInterval;
+                        }
                     }
                 }
             }
+            
             if (anim.moving && now >= anim.nextFrameTime) {
                 anim.frame = (anim.frame + 1) % 4;
                 anim.nextFrameTime = now + animInterval;
             }
-            if (id === myId && currentFrameSpan) currentFrameSpan.innerText = anim.frame;
-            if (id === myId && timeToNextSpan) timeToNextSpan.innerText = Math.max(0, anim.nextFrameTime - now).toFixed(2);
+            
+            if (id === myId) {
+                if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
+                if (timeToNextSpan) {
+                    const timeLeft = Math.max(0, anim.nextFrameTime - now);
+                    timeToNextSpan.innerText = timeLeft.toFixed(2);
+                }
+            }
+        }
+    }
+
+    function drawGround(camX, camY) {
+        ctx.fillStyle = "#e0b05a";
+        ctx.fillRect(camX, camY, canvas.width, canvas.height);
+        const gridSpacing = 80;
+        const startX = Math.floor(camX / gridSpacing) * gridSpacing;
+        const startY = Math.floor(camY / gridSpacing) * gridSpacing;
+        ctx.fillStyle = "#c99a3a";
+        for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
+            for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
+                ctx.beginPath();
+                ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
     }
 
@@ -724,11 +667,14 @@ canvas { display:block; cursor: crosshair; }
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const localPlayer = players[myId];
         if (!localPlayer) return;
+        
         let camX = localPlayer.x - canvas.width / 2;
         let camY = localPlayer.y - canvas.height / 2;
+        
         ctx.save();
         ctx.translate(-camX, -camY);
-        if (mapCanvas) ctx.drawImage(mapCanvas, 0, 0);
+        drawGround(camX, camY);
+        
         ctx.beginPath();
         ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
@@ -740,36 +686,58 @@ canvas { display:block; cursor: crosshair; }
         ctx.arc(zone.x, zone.y, zone.radius + 5, 0, Math.PI * 2);
         ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
         ctx.stroke();
-        const barWidth = 32, barHeight = 6;
-        const playerList = Object.values(players).filter(p => p.alive).sort((a,b) => a.y - b.y);
-        for (const p of playerList) {
-            const isMe = (p.id === myId);
-            const anim = playerAnim[p.id] || { frame: 1, directionRow: 0 };
+        
+        const barWidth = 32;
+        const barHeight = 6;
+        
+        const playerList = [];
+        for (let id in players) {
+            if (players[id].alive) {
+                playerList.push({ id, p: players[id] });
+            }
+        }
+        playerList.sort((a, b) => a.p.y - b.p.y);
+        
+        for (const { id, p } of playerList) {
+            const isMe = (id === myId);
+            const anim = playerAnim[id] || { frame: 1, directionRow: 0 };
+            const row = anim.directionRow;
+            const frameCol = anim.frame;
+            
             if (spriteLoaded) {
-                const srcX = anim.frame * TILE_SIZE + CROP_LEFT;
-                const srcY = anim.directionRow * TILE_SIZE + CROP_TOP;
-                ctx.drawImage(spriteSheet, srcX, srcY, CROP_WIDTH, CROP_HEIGHT, p.x - SPRITE_W/2, p.y - SPRITE_H/2, SPRITE_W, SPRITE_H);
+                const srcX = frameCol * TILE_SIZE + CROP_LEFT;
+                const srcY = row * TILE_SIZE + CROP_TOP;
+                const srcW = CROP_WIDTH;
+                const srcH = CROP_HEIGHT;
+                const destX = p.x - SPRITE_W/2;
+                const destY = p.y - SPRITE_H/2;
+                ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, SPRITE_W, SPRITE_H);
             } else {
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, SPRITE_W/2, 0, Math.PI*2);
-                ctx.fillStyle = getPlayerColor(p.id, isMe, p.color);
+                ctx.arc(p.x, p.y, SPRITE_W/2, 0, Math.PI * 2);
+                ctx.fillStyle = getPlayerColor(id, isMe, p.color);
                 ctx.fill();
                 ctx.strokeStyle = "#fff";
                 ctx.lineWidth = 2;
                 ctx.stroke();
             }
+            
             const healthPercent = p.health / 100;
+            const barX = p.x - barWidth / 2;
+            const barY = p.y - SPRITE_H/2 - 12;
             ctx.fillStyle = "#333";
-            ctx.fillRect(p.x - barWidth/2, p.y - SPRITE_H/2 - 12, barWidth, barHeight);
+            ctx.fillRect(barX, barY, barWidth, barHeight);
             ctx.fillStyle = "#ff3333";
-            ctx.fillRect(p.x - barWidth/2, p.y - SPRITE_H/2 - 12, barWidth * healthPercent, barHeight);
+            ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+            
             ctx.font = "12px Arial";
             ctx.fillStyle = "white";
             ctx.shadowBlur = 2;
-            ctx.fillText(isMe ? "Tú" : `P${p.id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
+            ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
+            
             if (isMe && lastAttackTime) {
-                const nowSec = Date.now() / 1000;
-                const cooldownRemaining = Math.max(0, attackCooldown - (nowSec - lastAttackTime));
+                const now = Date.now() / 1000;
+                const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
                 if (cooldownRemaining > 0) {
                     ctx.beginPath();
                     ctx.arc(p.x, p.y, SPRITE_W/2 + 2, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
@@ -780,10 +748,15 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         ctx.restore();
+        
         ctx.font = "bold 14px monospace";
         ctx.fillStyle = "white";
+        ctx.shadowBlur = 2;
         ctx.fillText(`🌊 Zona segura: ${Math.floor(zone.radius)}m`, 20, 70);
-        if (zone.radius < 400) ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
+        if (zone.radius < 300) {
+            ctx.fillStyle = "#ff8888";
+            ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
+        }
     }
 
     function updateRespawnMessage() {
@@ -793,18 +766,22 @@ canvas { display:block; cursor: crosshair; }
         if (!localPlayer) return;
         if (!localPlayer.alive) {
             if (deathTime === null) deathTime = Date.now();
-            const remaining = Math.max(0, Math.ceil(5 - (Date.now() - deathTime) / 1000));
+            const elapsed = (Date.now() - deathTime) / 1000;
+            let remaining = Math.max(0, Math.ceil(5 - elapsed));
             if (countdownSpan) countdownSpan.innerText = remaining;
             if (msgDiv) msgDiv.style.display = 'block';
+            // Al morir, cancelar cualquier destino point & click
             if (moveTarget) clearMoveTarget();
         } else {
-            deathTime = null;
+            if (deathTime !== null) deathTime = null;
             if (msgDiv) msgDiv.style.display = 'none';
         }
     }
 
     function gameLoop() {
+        // Actualizar dirección según el destino point & click (si aplica)
         updateMoveTargetDirection();
+        
         interpolateAll();
         updateAnimations();
         draw();
