@@ -10,71 +10,115 @@ const server = app.listen(process.env.PORT || 3000, () => {
 
 const wss = new WebSocket.Server({ server });
 
-const WORLD_SIZE = 4000;
+const WORLD_SIZE = 1600;
+const WORLD_CENTER = WORLD_SIZE / 2;
+const ISLAND_BASE_RADIUS = 720;
 const PLAYER_RADIUS = 8;
 const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
 const ZONE_SHRINK_TIME = 180;
-const ZONE_START_RADIUS = 1800;   // Ajustado para la isla grande
+const ZONE_START_RADIUS = 700;
 const ZONE_MIN_RADIUS = 100;
 const ZONE_DAMAGE_PER_SECOND = 8;
 
 let players = {};
-let zoneCenter = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
+let zoneCenter = { x: WORLD_CENTER, y: WORLD_CENTER };
 let zoneRadius = ZONE_START_RADIUS;
 let zoneShrinkStartTime = Date.now();
 let lastZoneDamageTime = Date.now();
 
-// ---------- Definición de la isla (misma que en el cliente) ----------
-const CENTER = WORLD_SIZE / 2;
+// ==================== MÁSCARA DE ISLA (ARENA vs AGUA) ====================
+let LAND_MASK = null;
 
-function isWalkable(x, y) {
-  let dx = x - CENTER;
-  let dy = y - CENTER;
-  let dist = Math.hypot(dx, dy);
-  let baseRadius = 1800;
-  
-  // Penínsulas
-  let peninsulas = [
-    { cx: CENTER + 600, cy: CENTER - 400, r: 400 },
-    { cx: CENTER - 500, cy: CENTER + 300, r: 350 },
-    { cx: CENTER + 200, cy: CENTER + 700, r: 300 },
-    { cx: CENTER - 700, cy: CENTER - 200, r: 300 }
-  ];
-  for (let p of peninsulas) {
-    if (Math.hypot(x - p.cx, y - p.cy) < p.r) return true;
+function generateIslandMask() {
+  const mask = new Array(WORLD_SIZE);
+  for (let i = 0; i < WORLD_SIZE; i++) {
+    mask[i] = new Array(WORLD_SIZE);
+    for (let j = 0; j < WORLD_SIZE; j++) {
+      const dx = i - WORLD_CENTER;
+      const dy = j - WORLD_CENTER;
+      const dist = Math.hypot(dx, dy);
+      const angle = Math.atan2(dy, dx);
+      // Perturbaciones para forma orgánica de continente
+      const variation = Math.sin(angle * 5) * 45 + Math.cos(angle * 3) * 35 + Math.sin(angle * 7) * 25;
+      const radiusAtAngle = ISLAND_BASE_RADIUS + variation;
+      let isLand = dist < radiusAtAngle;
+      // Bordes exteriores siempre agua
+      if (i < 60 || i > WORLD_SIZE - 60 || j < 60 || j > WORLD_SIZE - 60) isLand = false;
+      mask[i][j] = isLand;
+    }
   }
-  
-  let angle = Math.atan2(dy, dx);
-  let ripple = Math.sin(angle * 5) * 50;
-  if (dist < baseRadius + ripple) return true;
-  
-  return false;
+  // Pequeños lagos internos (opcional)
+  for (let i = 0; i < 300; i++) {
+    const x = Math.floor(Math.random() * WORLD_SIZE);
+    const y = Math.floor(Math.random() * WORLD_SIZE);
+    if (mask[x] && mask[x][y] === true && Math.random() < 0.15) {
+      for (let dx = -6; dx <= 6; dx++) {
+        for (let dy = -6; dy <= 6; dy++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < WORLD_SIZE && ny >= 0 && ny < WORLD_SIZE && Math.hypot(dx, dy) < 5) {
+            mask[nx][ny] = false;
+          }
+        }
+      }
+    }
+  }
+  return mask;
 }
-// ----------------------------------------------------------------
+
+function isLand(x, y) {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  if (ix < 0 || ix >= WORLD_SIZE || iy < 0 || iy >= WORLD_SIZE) return false;
+  return LAND_MASK[ix][iy] === true;
+}
+
+function clampToLand(player) {
+  if (isLand(player.x, player.y)) return;
+  // Buscar la celda de tierra más cercana (búsqueda espiral)
+  for (let radius = 1; radius <= 80; radius++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        const nx = player.x + dx;
+        const ny = player.y + dy;
+        if (isLand(nx, ny)) {
+          player.x = nx;
+          player.y = ny;
+          return;
+        }
+      }
+    }
+  }
+  // Fallback: centro del mundo (que es tierra)
+  player.x = WORLD_CENTER;
+  player.y = WORLD_CENTER;
+}
+
+function getRandomLandPosition() {
+  let attempts = 0;
+  while (attempts < 500) {
+    const x = Math.random() * (WORLD_SIZE - 200) + 100;
+    const y = Math.random() * (WORLD_SIZE - 200) + 100;
+    if (isLand(x, y)) return { x, y };
+    attempts++;
+  }
+  // fallback centro
+  return { x: WORLD_CENTER, y: WORLD_CENTER };
+}
+
+// Inicializar máscara
+LAND_MASK = generateIslandMask();
+
+// ==================== FIN SISTEMA DE TERRENO ====================
 
 class Player {
     constructor(id, ws) {
         this.id = id;
         this.ws = ws;
-        // Posición inicial dentro de la isla
-        let placed = false;
-        let tries = 0;
-        while (!placed && tries < 100) {
-            let x = Math.random() * (WORLD_SIZE - 200) + 100;
-            let y = Math.random() * (WORLD_SIZE - 200) + 100;
-            if (isWalkable(x, y)) {
-                this.x = x;
-                this.y = y;
-                placed = true;
-            }
-            tries++;
-        }
-        if (!placed) {
-            this.x = CENTER;
-            this.y = CENTER;
-        }
+        const spawn = getRandomLandPosition();
+        this.x = spawn.x;
+        this.y = spawn.y;
         this.health = 100;
         this.lastAttackTime = 0;
         this.dx = 0;
@@ -156,26 +200,17 @@ function updateMovement(deltaTime) {
         if (!p.alive) continue;
         let newX = p.x + p.dx * p.speed * deltaTime;
         let newY = p.y + p.dy * p.speed * deltaTime;
-        // Restringir movimiento a la isla
-        if (isWalkable(newX, newY)) {
+        // Validar que el nuevo punto esté sobre arena (isla)
+        if (isLand(newX, newY)) {
             p.x = newX;
             p.y = newY;
+        } else {
+            // Si el movimiento lo lleva al agua, no se mueve y se frena
+            p.dx = 0;
+            p.dy = 0;
         }
-        // Asegurar que nunca quede fuera por redondeo
-        if (!isWalkable(p.x, p.y)) {
-            // Si por algún motivo está fuera, lo colocamos en el punto más cercano dentro
-            // (búsqueda simple: reducimos hacia el centro hasta encontrar punto válido)
-            let fallbackX = p.x, fallbackY = p.y;
-            for (let step = 0; step < 20; step++) {
-                fallbackX = (fallbackX + CENTER) / 2;
-                fallbackY = (fallbackY + CENTER) / 2;
-                if (isWalkable(fallbackX, fallbackY)) {
-                    p.x = fallbackX;
-                    p.y = fallbackY;
-                    break;
-                }
-            }
-        }
+        // Clamp adicional por seguridad
+        clampToLand(p);
     }
 }
 
@@ -200,15 +235,14 @@ function handleCollisionsAndCombat(now) {
                 let newY1 = p1.y + moveY;
                 let newX2 = p2.x - moveX;
                 let newY2 = p2.y - moveY;
-                // Validar que las nuevas posiciones estén dentro de la isla
-                if (isWalkable(newX1, newY1)) {
-                    p1.x = newX1;
-                    p1.y = newY1;
-                }
-                if (isWalkable(newX2, newY2)) {
-                    p2.x = newX2;
-                    p2.y = newY2;
-                }
+                // Solo aplicar si no se salen de la isla (si se salen, se clampa después)
+                p1.x = newX1;
+                p1.y = newY1;
+                p2.x = newX2;
+                p2.y = newY2;
+                clampToLand(p1);
+                clampToLand(p2);
+                
                 const combat = resolveCombat(p1, p2, now);
                 if (combat) {
                     if (combat.firstHit) sendDamageEvent(combat.firstHit);
@@ -272,26 +306,28 @@ function processRespawns() {
             p.lastAttackTime = 0;
             p.dx = 0;
             p.dy = 0;
-            // Buscar posición dentro de la zona actual y dentro de la isla
+            // Respawnea en un punto aleatorio de arena dentro de la zona segura actual
+            let attempts = 0;
             let placed = false;
-            let tries = 0;
-            while (!placed && tries < 100) {
+            while (attempts < 100 && !placed) {
+                const safeRadius = Math.min(zoneRadius, WORLD_SIZE / 2);
                 const angle = Math.random() * 2 * Math.PI;
-                const radius = Math.random() * Math.min(zoneRadius, 1800);
+                const radius = Math.random() * safeRadius;
                 let x = zoneCenter.x + Math.cos(angle) * radius;
                 let y = zoneCenter.y + Math.sin(angle) * radius;
                 x = Math.min(Math.max(x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
                 y = Math.min(Math.max(y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-                if (isWalkable(x, y)) {
+                if (isLand(x, y)) {
                     p.x = x;
                     p.y = y;
                     placed = true;
                 }
-                tries++;
+                attempts++;
             }
             if (!placed) {
-                p.x = CENTER;
-                p.y = CENTER;
+                const fallback = getRandomLandPosition();
+                p.x = fallback.x;
+                p.y = fallback.y;
             }
             p.respawnTime = null;
         }
