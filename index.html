@@ -3,7 +3,7 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-/* (Mismo CSS que antes, sin cambios) */
+/* (estilos iguales que antes, sin cambios) */
 body { margin:0; overflow:hidden; background:#111; font-family: 'Segoe UI', Arial, sans-serif; }
 canvas { display:block; cursor: crosshair; }
 #ui { position: fixed; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 8px; font-size: 14px; pointer-events: none; z-index: 10; }
@@ -39,15 +39,14 @@ canvas { display:block; cursor: crosshair; }
     const ctx = canvas.getContext("2d");
 
     let myId = null;
-    let serverPlayers = {};      // datos crudos del servidor (para interpolación)
-    let players = {};            // para dibujar: interpolados para otros, predicho para local
+    let serverPlayers = {};
+    let players = {};            // solo otros jugadores (interpolados)
     let zone = { x: 800, y: 800, radius: 700 };
     let aliveCount = 0;
     let localPlayerHealth = 100;
     let lastAttackTime = 0;
     let attackCooldown = 0.8;
 
-    // Estado de teclado
     const keyState = { w: false, s: false, a: false, d: false };
     let input = { dx: 0, dy: 0 };
     let isTouchInput = false;
@@ -58,19 +57,22 @@ canvas { display:block; cursor: crosshair; }
     let isClickMoving = false;
     let recentTouch = false;
 
-    // ===== MEJORA: PREDICCIÓN LOCAL =====
-    let localPredicted = { x: 0, y: 0, health: 100, alive: true };
+    // Predicción local
+    let localPredicted = { x: 0, y: 0, health: 100, alive: true, respawnTime: null };
     let lastServerUpdateTime = 0;
     let lastServerPos = { x: 0, y: 0 };
-    let correctionFactor = 0.3; // suavizado al corregir
+    let correctionFactor = 0.3;
 
-    // ===== MEJORA: INTERPOLACIÓN BASADA EN TIEMPO =====
-    let lastServerState = null;      // estado anterior del servidor (timestamp, players)
-    let currentServerState = null;   // estado actual del servidor
+    // Interpolación de otros jugadores (basada en tiempo)
+    let lastServerState = null;
+    let currentServerState = null;
     let lastServerStateTime = 0;
     let currentServerStateTime = 0;
 
-    // Animación y sprites (igual que antes)
+    // Animación local
+    let localAnim = null;
+
+    // Sprites
     const SPRITE_URL = "ch003.png";
     const TOTAL_IMAGE_SIZE = 128;
     const TILES_PER_ROW = 4;
@@ -97,11 +99,11 @@ canvas { display:block; cursor: crosshair; }
             speedValue.innerText = animInterval.toFixed(2) + ' s';
         });
     }
-    let playerAnim = {};
+
+    let playerAnim = {}; // animaciones de otros jugadores
     const currentFrameSpan = document.getElementById('currentFrame');
     const timeToNextSpan = document.getElementById('timeToNext');
 
-    // Utilidades
     function getPlayerColor(id, isMe, serverColor) {
         if (isMe) return "#88ff88";
         if (serverColor) return serverColor;
@@ -121,7 +123,6 @@ canvas { display:block; cursor: crosshair; }
     resize();
     window.addEventListener("resize", resize);
 
-    // WebSocket
     const ws = new WebSocket(location.origin.replace("http", "ws"));
     let pingHistory = [];
     const PING_HISTORY_LEN = 5;
@@ -132,21 +133,20 @@ canvas { display:block; cursor: crosshair; }
             myId = data.id;
         }
         else if (data.type === 'state') {
-            // Guardamos el estado actual del servidor junto con timestamp
             const nowTime = Date.now();
             if (currentServerState !== null) {
-                // Pasamos el actual a "previo"
                 lastServerState = currentServerState;
                 lastServerStateTime = currentServerStateTime;
             }
             currentServerState = data;
             currentServerStateTime = nowTime;
 
-            // Actualizar datos locales inmediatos (health, aliveCount, zona)
             aliveCount = data.aliveCount;
             zone = data.zone;
+
             if (myId && data.players[myId]) {
                 const sp = data.players[myId];
+                const wasAlive = localPredicted.alive;
                 localPlayerHealth = sp.health;
                 const percent = Math.max(0, (localPlayerHealth / 100) * 100);
                 const healthBar = document.getElementById('healthBar');
@@ -157,23 +157,27 @@ canvas { display:block; cursor: crosshair; }
                 lastServerPos = { x: sp.x, y: sp.y };
                 lastServerUpdateTime = nowTime;
 
-                // Corrección para predicción local
+                // Corrección suave de la predicción
                 if (localPredicted.alive) {
-                    // Aplicamos corrección suave hacia la posición del servidor
                     localPredicted.x += (sp.x - localPredicted.x) * correctionFactor;
                     localPredicted.y += (sp.y - localPredicted.y) * correctionFactor;
                     localPredicted.health = sp.health;
                     localPredicted.alive = sp.alive;
+                    localPredicted.respawnTime = sp.respawnTime || null;
                 } else {
-                    // Si está muerto en el servidor, actualizamos predicción
                     localPredicted.x = sp.x;
                     localPredicted.y = sp.y;
                     localPredicted.health = sp.health;
                     localPredicted.alive = sp.alive;
+                    localPredicted.respawnTime = sp.respawnTime || null;
+                }
+
+                // Si resucitó, resetear animación local
+                if (!wasAlive && localPredicted.alive) {
+                    localAnim = null;
                 }
             }
 
-            // Ping
             if (data.timestamp) {
                 let rawPing = Date.now() - data.timestamp;
                 if (rawPing < 0) rawPing = 0;
@@ -204,13 +208,12 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
-    // ===== FUNCIONES DE MOVIMIENTO =====
+    // ----- Movimiento -----
     function updateInputFromKeys() {
         let rawDx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
         let rawDy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
         input.dx = rawDx;
         input.dy = rawDy;
-        // Si hay entrada de teclado, cancelamos point-and-click
         if (rawDx !== 0 || rawDy !== 0) {
             if (moveTarget) clearMoveTarget();
         }
@@ -247,7 +250,7 @@ canvas { display:block; cursor: crosshair; }
     window._oldKeyDown = handleKeyDown;
     window._oldKeyUp = handleKeyUp;
 
-    // Touch (drag)
+    // Touch drag
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
@@ -277,17 +280,16 @@ canvas { display:block; cursor: crosshair; }
 
     // Point & click
     function screenToWorld(clientX, clientY) {
-        const localPlayer = localPredicted;
-        if (!localPlayer) return { x: 0, y: 0 };
-        const camX = localPlayer.x - canvas.width / 2;
-        const camY = localPlayer.y - canvas.height / 2;
+        if (!localPredicted) return { x: 0, y: 0 };
+        const camX = localPredicted.x - canvas.width / 2;
+        const camY = localPredicted.y - canvas.height / 2;
         return { x: clientX + camX, y: clientY + camY };
     }
 
     function setMoveTarget(worldX, worldY) {
         if (!localPredicted.alive) return;
         moveTarget = { x: worldX, y: worldY };
-        keyState.w = false; keyState.s = false; keyState.a = false; keyState.d = false;
+        keyState.w = keyState.s = keyState.a = keyState.d = false;
         isTouchInput = false;
         isClickMoving = true;
     }
@@ -350,36 +352,33 @@ canvas { display:block; cursor: crosshair; }
     canvas.addEventListener("contextmenu", onCanvasContextMenu);
     canvas.addEventListener("touchstart", onTouchStartForClick);
 
-    // Envío de movimiento al servidor (cada 30 ms)
+    // Envío de movimiento al servidor (30 Hz)
     setInterval(() => {
         if (ws.readyState === 1 && myId) {
             ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
         }
     }, 30);
 
-    // ===== PREDICCIÓN LOCAL: actualizar posición cada frame =====
+    // ----- Predicción local -----
     let lastFrameTime = performance.now() / 1000;
     function updateLocalPrediction(nowSec) {
         if (!localPredicted.alive) return;
         const delta = Math.min(0.033, nowSec - lastFrameTime);
         lastFrameTime = nowSec;
-
-        const speed = 200; // misma que el servidor
+        const speed = 200;
         localPredicted.x += input.dx * speed * delta;
         localPredicted.y += input.dy * speed * delta;
-        // Límites del mundo
         const WORLD_SIZE = 1600;
         const PLAYER_RADIUS = 8;
         localPredicted.x = Math.min(Math.max(localPredicted.x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
         localPredicted.y = Math.min(Math.max(localPredicted.y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
     }
 
-    // ===== INTERPOLACIÓN DE OTROS JUGADORES =====
+    // ----- Interpolación de otros jugadores (sin el local) -----
     function interpolatePlayers() {
         if (!currentServerState) return;
         const now = Date.now();
-        let t = 1.0; // por defecto usar el último estado
-
+        let t = 1.0;
         if (lastServerState && lastServerStateTime > 0) {
             const total = currentServerStateTime - lastServerStateTime;
             if (total > 0) {
@@ -387,19 +386,13 @@ canvas { display:block; cursor: crosshair; }
                 t = Math.min(1.0, Math.max(0.0, t));
             }
         }
-
-        // Limpiar players y llenar con interpolación
         const newPlayers = {};
         for (let id in currentServerState.players) {
+            if (id === myId) continue; // NO incluimos al jugador local
             const spCurrent = currentServerState.players[id];
-            if (!spCurrent.alive) {
-                // Jugador muerto no se dibuja
-                continue;
-            }
-
+            if (!spCurrent.alive) continue;
             let interpX = spCurrent.x;
             let interpY = spCurrent.y;
-
             if (lastServerState && lastServerState.players[id]) {
                 const spPrev = lastServerState.players[id];
                 if (spPrev.alive) {
@@ -407,7 +400,6 @@ canvas { display:block; cursor: crosshair; }
                     interpY = spPrev.y + (spCurrent.y - spPrev.y) * t;
                 }
             }
-
             newPlayers[id] = {
                 id: spCurrent.id,
                 x: interpX,
@@ -418,11 +410,10 @@ canvas { display:block; cursor: crosshair; }
                 color: spCurrent.color
             };
         }
-
         players = newPlayers;
     }
 
-    // ===== DIRECCIÓN PARA SPRITES (sin cambios) =====
+    // ----- Animación de otros jugadores -----
     function getDirectionFromMovement(dx, dy) {
         if (isTouchInput || isClickMoving) {
             if (Math.abs(dx) > Math.abs(dy)) {
@@ -441,13 +432,22 @@ canvas { display:block; cursor: crosshair; }
         return null;
     }
 
-    function updateAnimations() {
-        const now = performance.now() / 1000;
+    function updateOtherAnimations(nowSec) {
         for (let id in players) {
             const p = players[id];
             if (!p.alive) continue;
+            if (!playerAnim[id]) {
+                playerAnim[id] = {
+                    frame: 1,
+                    directionRow: 0,
+                    moving: false,
+                    lastVisualX: p.x,
+                    lastVisualY: p.y,
+                    nextFrameTime: nowSec + animInterval,
+                    idleCounter: 0
+                };
+            }
             const anim = playerAnim[id];
-            if (!anim) continue;
             const deltaX = p.x - anim.lastVisualX;
             const deltaY = p.y - anim.lastVisualY;
             const distance = Math.hypot(deltaX, deltaY);
@@ -461,7 +461,7 @@ canvas { display:block; cursor: crosshair; }
                 if (!anim.moving) {
                     anim.moving = true;
                     anim.frame = 0;
-                    anim.nextFrameTime = now + animInterval;
+                    anim.nextFrameTime = nowSec + animInterval;
                 }
             } else {
                 if (anim.moving) {
@@ -480,25 +480,82 @@ canvas { display:block; cursor: crosshair; }
                         anim.directionRow = newRow;
                         if (anim.moving) {
                             anim.frame = 0;
-                            anim.nextFrameTime = now + animInterval;
+                            anim.nextFrameTime = nowSec + animInterval;
                         }
                     }
                 }
             }
-            if (anim.moving && now >= anim.nextFrameTime) {
+            if (anim.moving && nowSec >= anim.nextFrameTime) {
                 anim.frame = (anim.frame + 1) % 4;
-                anim.nextFrameTime = now + animInterval;
-            }
-            if (id === myId) {
-                if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
-                if (timeToNextSpan) {
-                    const timeLeft = Math.max(0, anim.nextFrameTime - now);
-                    timeToNextSpan.innerText = timeLeft.toFixed(2);
-                }
+                anim.nextFrameTime = nowSec + animInterval;
             }
         }
     }
 
+    // ----- Animación local -----
+    function updateLocalAnimation(nowSec) {
+        if (!localPredicted.alive) return;
+        if (!localAnim) {
+            localAnim = {
+                frame: 1,
+                directionRow: 0,
+                moving: false,
+                lastVisualX: localPredicted.x,
+                lastVisualY: localPredicted.y,
+                nextFrameTime: nowSec + animInterval,
+                idleCounter: 0
+            };
+        }
+        const deltaX = localPredicted.x - localAnim.lastVisualX;
+        const deltaY = localPredicted.y - localAnim.lastVisualY;
+        const distance = Math.hypot(deltaX, deltaY);
+        localAnim.lastVisualX = localPredicted.x;
+        localAnim.lastVisualY = localPredicted.y;
+        const MOVEMENT_THRESHOLD = 0.5;
+        const DIRECTION_THRESHOLD = 2.0;
+        const isMoving = distance > MOVEMENT_THRESHOLD;
+        if (isMoving) {
+            localAnim.idleCounter = 0;
+            if (!localAnim.moving) {
+                localAnim.moving = true;
+                localAnim.frame = 0;
+                localAnim.nextFrameTime = nowSec + animInterval;
+            }
+        } else {
+            if (localAnim.moving) {
+                localAnim.idleCounter++;
+                if (localAnim.idleCounter >= 3) {
+                    localAnim.moving = false;
+                    localAnim.frame = 1;
+                }
+            }
+        }
+        if (distance > DIRECTION_THRESHOLD) {
+            const direction = getDirectionFromMovement(deltaX, deltaY);
+            if (direction) {
+                const newRow = DIRECTION_TO_ROW[direction];
+                if (localAnim.directionRow !== newRow) {
+                    localAnim.directionRow = newRow;
+                    if (localAnim.moving) {
+                        localAnim.frame = 0;
+                        localAnim.nextFrameTime = nowSec + animInterval;
+                    }
+                }
+            }
+        }
+        if (localAnim.moving && nowSec >= localAnim.nextFrameTime) {
+            localAnim.frame = (localAnim.frame + 1) % 4;
+            localAnim.nextFrameTime = nowSec + animInterval;
+        }
+        // Actualizar debug
+        if (currentFrameSpan) currentFrameSpan.innerText = localAnim.frame;
+        if (timeToNextSpan) {
+            const timeLeft = Math.max(0, localAnim.nextFrameTime - nowSec);
+            timeToNextSpan.innerText = timeLeft.toFixed(2);
+        }
+    }
+
+    // ----- Dibujo -----
     function drawGround(camX, camY) {
         ctx.fillStyle = "#e0b05a";
         ctx.fillRect(camX, camY, canvas.width, canvas.height);
@@ -517,12 +574,11 @@ canvas { display:block; cursor: crosshair; }
 
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const localPlayer = localPredicted;
-        if (!localPlayer || !localPlayer.alive) {
-            // Si está muerto, seguimos dibujando el mapa pero sin personaje local (ya se maneja en resurrección)
+        if (!localPredicted.alive) {
+            // Si el jugador está muerto, mostramos el mapa centrado en la zona
             if (zone) {
-                let camX = (zone.x - canvas.width/2);
-                let camY = (zone.y - canvas.height/2);
+                let camX = zone.x - canvas.width/2;
+                let camY = zone.y - canvas.height/2;
                 ctx.save();
                 ctx.translate(-camX, -camY);
                 drawGround(camX, camY);
@@ -531,13 +587,13 @@ canvas { display:block; cursor: crosshair; }
             return;
         }
 
-        let camX = localPlayer.x - canvas.width / 2;
-        let camY = localPlayer.y - canvas.height / 2;
+        const camX = localPredicted.x - canvas.width / 2;
+        const camY = localPredicted.y - canvas.height / 2;
         ctx.save();
         ctx.translate(-camX, -camY);
         drawGround(camX, camY);
 
-        // Zona
+        // Zona segura
         ctx.beginPath();
         ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
@@ -553,7 +609,7 @@ canvas { display:block; cursor: crosshair; }
         const barWidth = 32;
         const barHeight = 6;
 
-        // Dibujar otros jugadores interpolados
+        // Dibujar otros jugadores
         const playerList = [];
         for (let id in players) {
             if (players[id].alive) {
@@ -563,12 +619,9 @@ canvas { display:block; cursor: crosshair; }
         playerList.sort((a, b) => a.p.y - b.p.y);
 
         for (const { id, p } of playerList) {
-            const isMe = (id === myId);
-            // Los demás jugadores usan el sprite con animación
             const anim = playerAnim[id] || { frame: 1, directionRow: 0 };
             const row = anim.directionRow;
             const frameCol = anim.frame;
-
             if (spriteLoaded) {
                 const srcX = frameCol * TILE_SIZE + CROP_LEFT;
                 const srcY = row * TILE_SIZE + CROP_TOP;
@@ -580,13 +633,12 @@ canvas { display:block; cursor: crosshair; }
             } else {
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, SPRITE_W/2, 0, Math.PI * 2);
-                ctx.fillStyle = getPlayerColor(id, isMe, p.color);
+                ctx.fillStyle = getPlayerColor(id, false, p.color);
                 ctx.fill();
                 ctx.strokeStyle = "#fff";
                 ctx.lineWidth = 2;
                 ctx.stroke();
             }
-
             const healthPercent = p.health / 100;
             const barX = p.x - barWidth / 2;
             const barY = p.y - SPRITE_H/2 - 12;
@@ -594,16 +646,15 @@ canvas { display:block; cursor: crosshair; }
             ctx.fillRect(barX, barY, barWidth, barHeight);
             ctx.fillStyle = "#ff3333";
             ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
-
             ctx.font = "12px Arial";
             ctx.fillStyle = "white";
             ctx.shadowBlur = 2;
-            ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
+            ctx.fillText(`P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
         }
 
-        // Dibujar al jugador local con predicción
-        if (localPlayer.alive) {
-            const anim = playerAnim[myId] || { frame: 1, directionRow: 0 };
+        // Dibujar jugador local
+        if (localPredicted.alive) {
+            const anim = localAnim || { frame: 1, directionRow: 0 };
             const row = anim.directionRow;
             const frameCol = anim.frame;
             if (spriteLoaded) {
@@ -611,35 +662,33 @@ canvas { display:block; cursor: crosshair; }
                 const srcY = row * TILE_SIZE + CROP_TOP;
                 const srcW = CROP_WIDTH;
                 const srcH = CROP_HEIGHT;
-                const destX = localPlayer.x - SPRITE_W/2;
-                const destY = localPlayer.y - SPRITE_H/2;
+                const destX = localPredicted.x - SPRITE_W/2;
+                const destY = localPredicted.y - SPRITE_H/2;
                 ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, SPRITE_W, SPRITE_H);
             } else {
                 ctx.beginPath();
-                ctx.arc(localPlayer.x, localPlayer.y, SPRITE_W/2, 0, Math.PI * 2);
+                ctx.arc(localPredicted.x, localPredicted.y, SPRITE_W/2, 0, Math.PI * 2);
                 ctx.fillStyle = "#88ff88";
                 ctx.fill();
                 ctx.strokeStyle = "#fff";
                 ctx.lineWidth = 2;
                 ctx.stroke();
             }
-
-            const healthPercent = localPlayer.health / 100;
-            const barX = localPlayer.x - barWidth / 2;
-            const barY = localPlayer.y - SPRITE_H/2 - 12;
+            const healthPercent = localPredicted.health / 100;
+            const barX = localPredicted.x - barWidth / 2;
+            const barY = localPredicted.y - SPRITE_H/2 - 12;
             ctx.fillStyle = "#333";
             ctx.fillRect(barX, barY, barWidth, barHeight);
             ctx.fillStyle = "#ff3333";
             ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
             ctx.fillStyle = "white";
-            ctx.fillText("Tú", localPlayer.x - 12, localPlayer.y - SPRITE_H/2 - 14);
-
+            ctx.fillText("Tú", localPredicted.x - 12, localPredicted.y - SPRITE_H/2 - 14);
             if (lastAttackTime) {
                 const nowSec = Date.now() / 1000;
                 const cooldownRemaining = Math.max(0, attackCooldown - (nowSec - lastAttackTime));
                 if (cooldownRemaining > 0) {
                     ctx.beginPath();
-                    ctx.arc(localPlayer.x, localPlayer.y, SPRITE_W/2 + 2, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
+                    ctx.arc(localPredicted.x, localPredicted.y, SPRITE_W/2 + 2, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
                     ctx.strokeStyle = "#ffaa44";
                     ctx.lineWidth = 3;
                     ctx.stroke();
@@ -676,9 +725,8 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    // Inicializar estructuras
+    // Inicialización
     function init() {
-        // Esperar a recibir el primer estado del servidor para inicializar localPredicted
         const checkInterval = setInterval(() => {
             if (myId && currentServerState && currentServerState.players[myId]) {
                 const sp = currentServerState.players[myId];
@@ -687,7 +735,7 @@ canvas { display:block; cursor: crosshair; }
                     y: sp.y,
                     health: sp.health,
                     alive: sp.alive,
-                    respawnTime: null
+                    respawnTime: sp.respawnTime || null
                 };
                 lastServerPos = { x: sp.x, y: sp.y };
                 lastServerUpdateTime = Date.now();
@@ -704,32 +752,8 @@ canvas { display:block; cursor: crosshair; }
         updateMoveTargetDirection();
         updateLocalPrediction(now);
         interpolatePlayers();
-        // Inicializar animaciones para jugadores que aparecen
-        for (let id in players) {
-            if (!playerAnim[id]) {
-                playerAnim[id] = {
-                    frame: 1,
-                    directionRow: 0,
-                    moving: false,
-                    lastVisualX: players[id].x,
-                    lastVisualY: players[id].y,
-                    nextFrameTime: now + animInterval,
-                    idleCounter: 0
-                };
-            }
-        }
-        if (myId && !playerAnim[myId] && localPredicted.alive) {
-            playerAnim[myId] = {
-                frame: 1,
-                directionRow: 0,
-                moving: false,
-                lastVisualX: localPredicted.x,
-                lastVisualY: localPredicted.y,
-                nextFrameTime: now + animInterval,
-                idleCounter: 0
-            };
-        }
-        updateAnimations();
+        updateOtherAnimations(now);
+        updateLocalAnimation(now);
         draw();
         updateRespawnMessage();
         requestAnimationFrame(gameLoop);
