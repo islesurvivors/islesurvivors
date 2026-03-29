@@ -196,10 +196,11 @@ canvas { display:block; cursor: crosshair; }
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
 
+    const WORLD_SIZE = 4000;
+
     let myId = null;
     let players = {};
     let serverPlayers = {};
-    let zone = { x: 800, y: 800, radius: 700 };
     let aliveCount = 0;
     let localPlayerHealth = 100;
     let lastAttackTime = 0;
@@ -211,51 +212,41 @@ canvas { display:block; cursor: crosshair; }
         a: false,
         d: false
     };
-    
+
     let input = { dx: 0, dy: 0 };
-    
-    // ===================== POINT & CLICK (DESKTOP) =====================
-    let moveTarget = null;           // { x, y } en coordenadas del mundo
-    const STOP_DISTANCE = 12.0;      // distancia para considerar que llegó al destino
-    let recentTouch = false;          // evita conflictos con eventos táctiles en móvil
-    let isClickMoving = false;        // indica si el movimiento actual es por point-and-click
-    
+
+    let moveTarget = null;
+    const STOP_DISTANCE = 12.0;
+    let recentTouch = false;
+    let isClickMoving = false;
+
     function clearMoveTarget() {
         moveTarget = null;
         isClickMoving = false;
-        // No resetear input.dx/dy aquí porque puede que haya teclado activo.
-        // Se actualizará en updateMoveTargetDirection.
     }
-    
+
     function setMoveTarget(worldX, worldY) {
         if (!players[myId] || !players[myId].alive) return;
         moveTarget = { x: worldX, y: worldY };
-        // Al fijar nuevo destino, desactivamos cualquier entrada manual previa (teclado/touch)
-        // para evitar conflictos.
         keyState.w = false;
         keyState.s = false;
         keyState.a = false;
         keyState.d = false;
         isTouchInput = false;
-        isClickMoving = true;   // activamos el modo click para orientación de sprite
-        // No tocamos input.dx/dy directamente; updateMoveTargetDirection los ajustará.
+        isClickMoving = true;
     }
-    
+
     function updateMoveTargetDirection() {
-        // Si el jugador local no existe o está muerto, cancelar cualquier destino
         if (!players[myId] || !players[myId].alive) {
             if (moveTarget) clearMoveTarget();
             return;
         }
-        
-        // Si hay entrada activa por teclado o touch drag, cancelar el movimiento automático
+
         if (keyState.w || keyState.s || keyState.a || keyState.d || isTouchInput) {
             if (moveTarget) clearMoveTarget();
             return;
         }
-        
-        // Si no hay destino, no hacemos nada (input se quedará como está, pero si no hay teclado
-        // ni touch, input debería ser 0. Lo aseguramos)
+
         if (!moveTarget) {
             if (input.dx !== 0 || input.dy !== 0) {
                 input.dx = 0;
@@ -263,88 +254,74 @@ canvas { display:block; cursor: crosshair; }
             }
             return;
         }
-        
+
         const local = players[myId];
         const dxTarget = moveTarget.x - local.x;
         const dyTarget = moveTarget.y - local.y;
         const distance = Math.hypot(dxTarget, dyTarget);
-        
-        // Si estamos suficientemente cerca, detener y limpiar destino
+
         if (distance < STOP_DISTANCE) {
             clearMoveTarget();
             input.dx = 0;
             input.dy = 0;
             return;
         }
-        
-        // Calcular vector dirección normalizado hacia el destino
+
         const mag = distance;
         const normX = dxTarget / mag;
         const normY = dyTarget / mag;
         input.dx = normX;
         input.dy = normY;
     }
-    
-    // Función para convertir coordenadas de pantalla a mundo (teniendo en cuenta la cámara)
+
     function screenToWorld(clientX, clientY) {
         const localPlayer = players[myId];
         if (!localPlayer) return { x: 0, y: 0 };
-        const camX = localPlayer.x - canvas.width / 2;
-        const camY = localPlayer.y - canvas.height / 2;
+        const camX = Math.max(0, Math.min(localPlayer.x - canvas.width / 2, Math.max(0, WORLD_SIZE - canvas.width)));
+        const camY = Math.max(0, Math.min(localPlayer.y - canvas.height / 2, Math.max(0, WORLD_SIZE - canvas.height)));
         const worldX = clientX + camX;
         const worldY = clientY + camY;
         return { x: worldX, y: worldY };
     }
-    
-    // Manejador de click (point & click) solo para desktop, sin interferir con táctil
+
     function onCanvasClick(e) {
-        // Evitar clicks que vengan de interacción táctil reciente (móvil)
         if (recentTouch) {
             recentTouch = false;
             return;
         }
-        // Prevenir comportamientos extraños
         e.preventDefault();
-        // Solo actuar si el jugador está vivo y el juego tiene ID
         if (!myId) return;
         if (!players[myId] || !players[myId].alive) return;
-        
-        // Obtener coordenadas del clic en el canvas
+
         const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;   // por si hay CSS, pero canvas tamaño real
+        const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
         let clickCanvasX = (e.clientX - rect.left) * scaleX;
         let clickCanvasY = (e.clientY - rect.top) * scaleY;
-        // Asegurar límites dentro del canvas
         clickCanvasX = Math.min(Math.max(0, clickCanvasX), canvas.width);
         clickCanvasY = Math.min(Math.max(0, clickCanvasY), canvas.height);
-        
+
         const worldPos = screenToWorld(clickCanvasX, clickCanvasY);
-        // Establecer nuevo destino (esto desactiva teclado/touch automáticamente)
         setMoveTarget(worldPos.x, worldPos.y);
     }
-    
+
     function onCanvasContextMenu(e) {
-        e.preventDefault(); // Evitar menú contextual al hacer click derecho
+        e.preventDefault();
         return false;
     }
-    
-    // Detectar eventos táctiles para marcar "recentTouch" y evitar conflictos de click en móviles
+
     function onTouchStartForClick(e) {
         recentTouch = true;
-        // Limpiar el flag después de un tiempo prudencial (para que no afecte a clicks legítimos)
         setTimeout(() => { recentTouch = false; }, 300);
     }
-    
-    // ===================== FIN POINT & CLICK =====================
-    
+
     function updateInputFromKeys() {
         let rawDx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
         let rawDy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
         input.dx = rawDx;
         input.dy = rawDy;
     }
-    
+
     function handleKeyDown(e) {
         const key = e.key;
         let changed = false;
@@ -355,11 +332,10 @@ canvas { display:block; cursor: crosshair; }
         if (changed) {
             updateInputFromKeys();
             isTouchInput = false;
-            // Al presionar tecla, cancelamos cualquier destino automático
             if (moveTarget) clearMoveTarget();
         }
     }
-    
+
     function handleKeyUp(e) {
         const key = e.key;
         let changed = false;
@@ -369,14 +345,14 @@ canvas { display:block; cursor: crosshair; }
         else if (key === 'd') { keyState.d = false; changed = true; e.preventDefault(); }
         if (changed) updateInputFromKeys();
     }
-    
+
     document.removeEventListener("keydown", window._oldKeyDown);
     document.removeEventListener("keyup", window._oldKeyUp);
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
     window._oldKeyDown = handleKeyDown;
     window._oldKeyUp = handleKeyUp;
-    
+
     let deathTime = null;
     let pingHistory = [];
     const PING_HISTORY_LEN = 5;
@@ -449,7 +425,6 @@ canvas { display:block; cursor: crosshair; }
         }
         else if (data.type === 'state') {
             serverPlayers = data.players;
-            zone = data.zone;
             aliveCount = data.aliveCount;
             if (myId && serverPlayers[myId]) {
                 localPlayerHealth = serverPlayers[myId].health;
@@ -498,7 +473,6 @@ canvas { display:block; cursor: crosshair; }
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
         isTouchInput = true;
-        // Al iniciar touch, cancelamos cualquier destino point&click
         if (moveTarget) clearMoveTarget();
     });
     canvas.addEventListener("touchmove", (e) => {
@@ -517,17 +491,12 @@ canvas { display:block; cursor: crosshair; }
         input.dx = 0;
         input.dy = 0;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
-        // Al soltar el touch, no cancelamos destino automáticamente porque ya no hay arrastre
     });
 
-    // ============ Configuración de eventos point & click (desktop) ============
-    // Agregar evento click para movimiento con ratón
     canvas.addEventListener("click", onCanvasClick);
     canvas.addEventListener("contextmenu", onCanvasContextMenu);
-    // Detectar inicios táctiles para evitar falsos clicks en móvil
     canvas.addEventListener("touchstart", onTouchStartForClick);
-    // ==========================================================================
-    
+
     setInterval(() => {
         if (ws.readyState === 1 && myId) {
             ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
@@ -559,9 +528,7 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    // MODIFICACIÓN: lógica de dirección unificada para móvil y point-and-click (prioridad horizontal)
     function getDirectionFromMovement(dx, dy) {
-        // Si es entrada táctil O movimiento por click, usar prioridad horizontal (como en móvil)
         if (isTouchInput || isClickMoving) {
             if (Math.abs(dx) > Math.abs(dy)) {
                 return dx > 0 ? 'right' : 'left';
@@ -569,7 +536,6 @@ canvas { display:block; cursor: crosshair; }
                 return dy > 0 ? 'down' : 'up';
             }
         } else {
-            // Prioridad vertical para teclado (comportamiento original)
             if (Math.abs(dy) > 0.01) {
                 return dy > 0 ? 'down' : 'up';
             }
@@ -592,15 +558,15 @@ canvas { display:block; cursor: crosshair; }
             const deltaX = p.x - anim.lastVisualX;
             const deltaY = p.y - anim.lastVisualY;
             const distance = Math.hypot(deltaX, deltaY);
-            
+
             anim.lastVisualX = p.x;
             anim.lastVisualY = p.y;
-            
+
             const MOVEMENT_THRESHOLD = 0.5;
             const DIRECTION_THRESHOLD = 2.0;
-            
+
             const isMoving = distance > MOVEMENT_THRESHOLD;
-            
+
             if (isMoving) {
                 anim.idleCounter = 0;
                 if (!anim.moving) {
@@ -617,7 +583,7 @@ canvas { display:block; cursor: crosshair; }
                     }
                 }
             }
-            
+
             if (distance > DIRECTION_THRESHOLD) {
                 const direction = getDirectionFromMovement(deltaX, deltaY);
                 if (direction) {
@@ -631,12 +597,12 @@ canvas { display:block; cursor: crosshair; }
                     }
                 }
             }
-            
+
             if (anim.moving && now >= anim.nextFrameTime) {
                 anim.frame = (anim.frame + 1) % 4;
                 anim.nextFrameTime = now + animInterval;
             }
-            
+
             if (id === myId) {
                 if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
                 if (timeToNextSpan) {
@@ -667,29 +633,19 @@ canvas { display:block; cursor: crosshair; }
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const localPlayer = players[myId];
         if (!localPlayer) return;
-        
+
         let camX = localPlayer.x - canvas.width / 2;
         let camY = localPlayer.y - canvas.height / 2;
-        
+        camX = Math.max(0, Math.min(camX, Math.max(0, WORLD_SIZE - canvas.width)));
+        camY = Math.max(0, Math.min(camY, Math.max(0, WORLD_SIZE - canvas.height)));
+
         ctx.save();
         ctx.translate(-camX, -camY);
         drawGround(camX, camY);
-        
-        ctx.beginPath();
-        ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(0, 200, 255, 0.9)";
-        ctx.lineWidth = 4;
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(zone.x, zone.y, zone.radius + 5, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
-        ctx.stroke();
-        
+
         const barWidth = 32;
         const barHeight = 6;
-        
+
         const playerList = [];
         for (let id in players) {
             if (players[id].alive) {
@@ -697,13 +653,13 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         playerList.sort((a, b) => a.p.y - b.p.y);
-        
+
         for (const { id, p } of playerList) {
             const isMe = (id === myId);
             const anim = playerAnim[id] || { frame: 1, directionRow: 0 };
             const row = anim.directionRow;
             const frameCol = anim.frame;
-            
+
             if (spriteLoaded) {
                 const srcX = frameCol * TILE_SIZE + CROP_LEFT;
                 const srcY = row * TILE_SIZE + CROP_TOP;
@@ -721,7 +677,7 @@ canvas { display:block; cursor: crosshair; }
                 ctx.lineWidth = 2;
                 ctx.stroke();
             }
-            
+
             const healthPercent = p.health / 100;
             const barX = p.x - barWidth / 2;
             const barY = p.y - SPRITE_H/2 - 12;
@@ -729,12 +685,12 @@ canvas { display:block; cursor: crosshair; }
             ctx.fillRect(barX, barY, barWidth, barHeight);
             ctx.fillStyle = "#ff3333";
             ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
-            
+
             ctx.font = "12px Arial";
             ctx.fillStyle = "white";
             ctx.shadowBlur = 2;
             ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
-            
+
             if (isMe && lastAttackTime) {
                 const now = Date.now() / 1000;
                 const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
@@ -748,15 +704,6 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         ctx.restore();
-        
-        ctx.font = "bold 14px monospace";
-        ctx.fillStyle = "white";
-        ctx.shadowBlur = 2;
-        ctx.fillText(`🌊 Zona segura: ${Math.floor(zone.radius)}m`, 20, 70);
-        if (zone.radius < 300) {
-            ctx.fillStyle = "#ff8888";
-            ctx.fillText("⚠️ LA ISLA SE HUNDE RÁPIDO ⚠️", 20, 100);
-        }
     }
 
     function updateRespawnMessage() {
@@ -770,7 +717,6 @@ canvas { display:block; cursor: crosshair; }
             let remaining = Math.max(0, Math.ceil(5 - elapsed));
             if (countdownSpan) countdownSpan.innerText = remaining;
             if (msgDiv) msgDiv.style.display = 'block';
-            // Al morir, cancelar cualquier destino point & click
             if (moveTarget) clearMoveTarget();
         } else {
             if (deathTime !== null) deathTime = null;
@@ -779,9 +725,7 @@ canvas { display:block; cursor: crosshair; }
     }
 
     function gameLoop() {
-        // Actualizar dirección según el destino point & click (si aplica)
         updateMoveTargetDirection();
-        
         interpolateAll();
         updateAnimations();
         draw();
