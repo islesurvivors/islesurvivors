@@ -612,22 +612,39 @@ canvas { display:block; cursor: crosshair; }
             }
         }
     }
+function drawGround(camX, camY) {
+    // Agua
+    ctx.fillStyle = "#1e78a8";
+    ctx.fillRect(camX, camY, canvas.width, canvas.height);
 
-    function drawGround(camX, camY) {
-        ctx.fillStyle = "#e0b05a";
-        ctx.fillRect(camX, camY, canvas.width, canvas.height);
-        const gridSpacing = 80;
-        const startX = Math.floor(camX / gridSpacing) * gridSpacing;
-        const startY = Math.floor(camY / gridSpacing) * gridSpacing;
-        ctx.fillStyle = "#c99a3a";
-        for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
-            for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
-                ctx.beginPath();
-                ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-                ctx.fill();
-            }
+    const gridSpacing = 80;
+    const startX = Math.floor(camX / gridSpacing) * gridSpacing;
+    const startY = Math.floor(camY / gridSpacing) * gridSpacing;
+
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
+        for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
+            ctx.beginPath();
+            ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+            ctx.fill();
         }
     }
+
+    // Isla segura
+    const SAFE_ZONE_SIZE = 260;
+    const centerX = 4000 / 2;
+    const centerY = 4000 / 2;
+
+    const islandX = centerX - SAFE_ZONE_SIZE / 2;
+    const islandY = centerY - SAFE_ZONE_SIZE / 2;
+
+    ctx.fillStyle = "#d9bf73";
+    ctx.fillRect(islandX, islandY, SAFE_ZONE_SIZE, SAFE_ZONE_SIZE);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(islandX + 2, islandY + 2, SAFE_ZONE_SIZE - 4, SAFE_ZONE_SIZE - 4);
+}}
 
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
