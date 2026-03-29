@@ -236,7 +236,6 @@ function broadcastGameState() {
         players: {},
         zone: { x: zoneCenter.x, y: zoneCenter.y, radius: zoneRadius },
         aliveCount: Object.values(players).filter(p => p.alive).length,
-        // timestamp ya no se usa para ping, pero se mantiene por si se necesita
         timestamp: Date.now()
     };
     for (let id in players) {
@@ -287,13 +286,6 @@ wss.on("connection", (ws) => {
                 p.dx = data.dx;
                 p.dy = data.dy;
             }
-        }
-        // Respuesta a ping para medir RTT real
-        else if (data.type === "ping") {
-            ws.send(JSON.stringify({
-                type: "pong",
-                clientTime: data.clientTime
-            }));
         }
     });
     ws.on("close", () => {
