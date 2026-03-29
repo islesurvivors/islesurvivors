@@ -462,15 +462,20 @@ canvas { display:block; cursor: crosshair; }
             }
             const aliveCountSpan = document.getElementById('aliveCount');
             if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
+            
+            // --- MEJORA DEL PING: mostrar valor absoluto con decimales ---
             if (data.timestamp) {
                 let rawPing = Date.now() - data.timestamp;
-                if (rawPing < 0) rawPing = 0;
+                // Tomar valor absoluto para evitar negativos por desincronización
+                rawPing = Math.abs(rawPing);
                 pingHistory.push(rawPing);
                 if (pingHistory.length > PING_HISTORY_LEN) pingHistory.shift();
-                const avgPing = Math.round(pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length);
+                // Calcular promedio con decimales
+                const avgPing = pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length;
                 const pingSpan = document.getElementById('pingValue');
-                if (pingSpan) pingSpan.innerText = avgPing;
+                if (pingSpan) pingSpan.innerText = avgPing.toFixed(1);
             }
+            // ------------------------------------------------------------
         }
         else if (data.type === 'damage') {
             if (data.target === myId) {
