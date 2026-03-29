@@ -223,39 +223,85 @@ canvas { display:block; cursor: crosshair; }
     function clearMoveTarget() {
         moveTarget = null;
         isClickMoving = false;
-        // No resetear input.dx/dy aquí porque puede que haya teclado activo.
-        // Se actualizará en updateMoveTargetDirection.
     }
+    
+    // ----- Definición de la isla (misma que en el servidor) -----
+    const WORLD_SIZE = 4000;
+    const CENTER = WORLD_SIZE / 2;
+    
+    function isWalkable(x, y) {
+        // Círculo base
+        let dx = x - CENTER;
+        let dy = y - CENTER;
+        let dist = Math.hypot(dx, dy);
+        let baseRadius = 1800;
+        
+        // Penínsulas (discos adicionales)
+        let peninsulas = [
+            { cx: CENTER + 600, cy: CENTER - 400, r: 400 },
+            { cx: CENTER - 500, cy: CENTER + 300, r: 350 },
+            { cx: CENTER + 200, cy: CENTER + 700, r: 300 },
+            { cx: CENTER - 700, cy: CENTER - 200, r: 300 }
+        ];
+        for (let p of peninsulas) {
+            if (Math.hypot(x - p.cx, y - p.cy) < p.r) return true;
+        }
+        
+        // Radio base con ondulación para borde irregular
+        let angle = Math.atan2(dy, dx);
+        let ripple = Math.sin(angle * 5) * 50;
+        if (dist < baseRadius + ripple) return true;
+        
+        return false;
+    }
+    
+    // Detalles de la isla (vegetación, rocas) - generados una sola vez
+    let islandDetails = [];
+    function generateIslandDetails() {
+        const numDetails = 400;
+        for (let i = 0; i < numDetails; i++) {
+            // Generar punto aleatorio dentro de un círculo grande (para después validar isWalkable)
+            let angle = Math.random() * 2 * Math.PI;
+            let rad = Math.random() * 1900;
+            let x = CENTER + Math.cos(angle) * rad;
+            let y = CENTER + Math.sin(angle) * rad;
+            if (isWalkable(x, y)) {
+                let type = Math.random();
+                let color;
+                if (type < 0.6) color = "#6a9e4b";  // vegetación
+                else if (type < 0.85) color = "#b97c45"; // tierra
+                else color = "#9e9e9e";               // rocas
+                let size = 2 + Math.random() * 4;
+                islandDetails.push({ x, y, color, size });
+            }
+        }
+    }
+    generateIslandDetails();
     
     function setMoveTarget(worldX, worldY) {
         if (!players[myId] || !players[myId].alive) return;
+        // Solo permitir destinos dentro de la isla
+        if (!isWalkable(worldX, worldY)) return;
         moveTarget = { x: worldX, y: worldY };
-        // Al fijar nuevo destino, desactivamos cualquier entrada manual previa (teclado/touch)
-        // para evitar conflictos.
         keyState.w = false;
         keyState.s = false;
         keyState.a = false;
         keyState.d = false;
         isTouchInput = false;
-        isClickMoving = true;   // activamos el modo click para orientación de sprite
-        // No tocamos input.dx/dy directamente; updateMoveTargetDirection los ajustará.
+        isClickMoving = true;
     }
     
     function updateMoveTargetDirection() {
-        // Si el jugador local no existe o está muerto, cancelar cualquier destino
         if (!players[myId] || !players[myId].alive) {
             if (moveTarget) clearMoveTarget();
             return;
         }
         
-        // Si hay entrada activa por teclado o touch drag, cancelar el movimiento automático
         if (keyState.w || keyState.s || keyState.a || keyState.d || isTouchInput) {
             if (moveTarget) clearMoveTarget();
             return;
         }
         
-        // Si no hay destino, no hacemos nada (input se quedará como está, pero si no hay teclado
-        // ni touch, input debería ser 0. Lo aseguramos)
         if (!moveTarget) {
             if (input.dx !== 0 || input.dy !== 0) {
                 input.dx = 0;
@@ -269,7 +315,6 @@ canvas { display:block; cursor: crosshair; }
         const dyTarget = moveTarget.y - local.y;
         const distance = Math.hypot(dxTarget, dyTarget);
         
-        // Si estamos suficientemente cerca, detener y limpiar destino
         if (distance < STOP_DISTANCE) {
             clearMoveTarget();
             input.dx = 0;
@@ -277,7 +322,6 @@ canvas { display:block; cursor: crosshair; }
             return;
         }
         
-        // Calcular vector dirección normalizado hacia el destino
         const mag = distance;
         const normX = dxTarget / mag;
         const normY = dyTarget / mag;
@@ -285,7 +329,6 @@ canvas { display:block; cursor: crosshair; }
         input.dy = normY;
     }
     
-    // Función para convertir coordenadas de pantalla a mundo (teniendo en cuenta la cámara)
     function screenToWorld(clientX, clientY) {
         const localPlayer = players[myId];
         if (!localPlayer) return { x: 0, y: 0 };
@@ -296,46 +339,36 @@ canvas { display:block; cursor: crosshair; }
         return { x: worldX, y: worldY };
     }
     
-    // Manejador de click (point & click) solo para desktop, sin interferir con táctil
     function onCanvasClick(e) {
-        // Evitar clicks que vengan de interacción táctil reciente (móvil)
         if (recentTouch) {
             recentTouch = false;
             return;
         }
-        // Prevenir comportamientos extraños
         e.preventDefault();
-        // Solo actuar si el jugador está vivo y el juego tiene ID
         if (!myId) return;
         if (!players[myId] || !players[myId].alive) return;
         
-        // Obtener coordenadas del clic en el canvas
         const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;   // por si hay CSS, pero canvas tamaño real
+        const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
         let clickCanvasX = (e.clientX - rect.left) * scaleX;
         let clickCanvasY = (e.clientY - rect.top) * scaleY;
-        // Asegurar límites dentro del canvas
         clickCanvasX = Math.min(Math.max(0, clickCanvasX), canvas.width);
         clickCanvasY = Math.min(Math.max(0, clickCanvasY), canvas.height);
         
         const worldPos = screenToWorld(clickCanvasX, clickCanvasY);
-        // Establecer nuevo destino (esto desactiva teclado/touch automáticamente)
         setMoveTarget(worldPos.x, worldPos.y);
     }
     
     function onCanvasContextMenu(e) {
-        e.preventDefault(); // Evitar menú contextual al hacer click derecho
+        e.preventDefault();
         return false;
     }
     
-    // Detectar eventos táctiles para marcar "recentTouch" y evitar conflictos de click en móviles
     function onTouchStartForClick(e) {
         recentTouch = true;
-        // Limpiar el flag después de un tiempo prudencial (para que no afecte a clicks legítimos)
         setTimeout(() => { recentTouch = false; }, 300);
     }
-    
     // ===================== FIN POINT & CLICK =====================
     
     function updateInputFromKeys() {
@@ -355,7 +388,6 @@ canvas { display:block; cursor: crosshair; }
         if (changed) {
             updateInputFromKeys();
             isTouchInput = false;
-            // Al presionar tecla, cancelamos cualquier destino automático
             if (moveTarget) clearMoveTarget();
         }
     }
@@ -498,7 +530,6 @@ canvas { display:block; cursor: crosshair; }
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
         isTouchInput = true;
-        // Al iniciar touch, cancelamos cualquier destino point&click
         if (moveTarget) clearMoveTarget();
     });
     canvas.addEventListener("touchmove", (e) => {
@@ -517,16 +548,11 @@ canvas { display:block; cursor: crosshair; }
         input.dx = 0;
         input.dy = 0;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
-        // Al soltar el touch, no cancelamos destino automáticamente porque ya no hay arrastre
     });
 
-    // ============ Configuración de eventos point & click (desktop) ============
-    // Agregar evento click para movimiento con ratón
     canvas.addEventListener("click", onCanvasClick);
     canvas.addEventListener("contextmenu", onCanvasContextMenu);
-    // Detectar inicios táctiles para evitar falsos clicks en móvil
     canvas.addEventListener("touchstart", onTouchStartForClick);
-    // ==========================================================================
     
     setInterval(() => {
         if (ws.readyState === 1 && myId) {
@@ -559,9 +585,7 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
-    // MODIFICACIÓN: lógica de dirección unificada para móvil y point-and-click (prioridad horizontal)
     function getDirectionFromMovement(dx, dy) {
-        // Si es entrada táctil O movimiento por click, usar prioridad horizontal (como en móvil)
         if (isTouchInput || isClickMoving) {
             if (Math.abs(dx) > Math.abs(dy)) {
                 return dx > 0 ? 'right' : 'left';
@@ -569,7 +593,6 @@ canvas { display:block; cursor: crosshair; }
                 return dy > 0 ? 'down' : 'up';
             }
         } else {
-            // Prioridad vertical para teclado (comportamiento original)
             if (Math.abs(dy) > 0.01) {
                 return dy > 0 ? 'down' : 'up';
             }
@@ -647,18 +670,62 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
+    // Dibujo del fondo: agua + isla + detalles
     function drawGround(camX, camY) {
-        ctx.fillStyle = "#e0b05a";
+        // 1. Agua (fondo completo)
+        ctx.fillStyle = "#4aa8d8"; // celeste
         ctx.fillRect(camX, camY, canvas.width, canvas.height);
-        const gridSpacing = 80;
-        const startX = Math.floor(camX / gridSpacing) * gridSpacing;
-        const startY = Math.floor(camY / gridSpacing) * gridSpacing;
-        ctx.fillStyle = "#c99a3a";
-        for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
-            for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
+        
+        // 2. Isla (arena)
+        // Para dibujar la isla usamos los mismos discos que definen isWalkable
+        ctx.fillStyle = "#e8c48a"; // arena amarilla
+        // Círculo base
+        ctx.beginPath();
+        ctx.arc(CENTER, CENTER, 1800, 0, Math.PI * 2);
+        ctx.fill();
+        // Penínsulas
+        const peninsulas = [
+            { cx: CENTER + 600, cy: CENTER - 400, r: 400 },
+            { cx: CENTER - 500, cy: CENTER + 300, r: 350 },
+            { cx: CENTER + 200, cy: CENTER + 700, r: 300 },
+            { cx: CENTER - 700, cy: CENTER - 200, r: 300 }
+        ];
+        for (let p of peninsulas) {
+            ctx.beginPath();
+            ctx.arc(p.cx, p.cy, p.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // Ondulación del borde: dibujamos algunos círculos extra para suavizar
+        for (let ang = 0; ang < Math.PI * 2; ang += 0.3) {
+            let ripple = 1800 + Math.sin(ang * 5) * 50;
+            let x = CENTER + Math.cos(ang) * ripple;
+            let y = CENTER + Math.sin(ang) * ripple;
+            ctx.beginPath();
+            ctx.arc(x, y, 12, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // 3. Detalles de colores (vegetación, rocas)
+        for (let d of islandDetails) {
+            ctx.fillStyle = d.color;
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Pequeñas líneas de textura (opcional)
+        ctx.strokeStyle = "#c2a15b";
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 800; i++) {
+            let ang = Math.random() * 2 * Math.PI;
+            let rad = Math.random() * 1850;
+            let x = CENTER + Math.cos(ang) * rad;
+            let y = CENTER + Math.sin(ang) * rad;
+            if (isWalkable(x, y)) {
                 ctx.beginPath();
-                ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.moveTo(x - 2, y - 2);
+                ctx.lineTo(x + 2, y + 2);
+                ctx.stroke();
             }
         }
     }
@@ -675,6 +742,7 @@ canvas { display:block; cursor: crosshair; }
         ctx.translate(-camX, -camY);
         drawGround(camX, camY);
         
+        // Zona segura (círculo que se encoge)
         ctx.beginPath();
         ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(0, 150, 200, 0.25)";
@@ -770,7 +838,6 @@ canvas { display:block; cursor: crosshair; }
             let remaining = Math.max(0, Math.ceil(5 - elapsed));
             if (countdownSpan) countdownSpan.innerText = remaining;
             if (msgDiv) msgDiv.style.display = 'block';
-            // Al morir, cancelar cualquier destino point & click
             if (moveTarget) clearMoveTarget();
         } else {
             if (deathTime !== null) deathTime = null;
@@ -779,9 +846,7 @@ canvas { display:block; cursor: crosshair; }
     }
 
     function gameLoop() {
-        // Actualizar dirección según el destino point & click (si aplica)
         updateMoveTargetDirection();
-        
         interpolateAll();
         updateAnimations();
         draw();
