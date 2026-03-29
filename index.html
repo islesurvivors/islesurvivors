@@ -193,12 +193,11 @@ canvas { display:block; cursor: crosshair; }
 
 <script>
 (function() {
-    // ==================== CONSTANTES DEL MUNDO (COINCIDEN CON SERVIDOR) ====================
-    const WORLD_SIZE = 2400;          // Mapa más grande
+    // ==================== CONSTANTES DEL MUNDO ====================
+    const WORLD_SIZE = 2400;
     const WORLD_CENTER = WORLD_SIZE / 2;
     
-    // ==================== IMPLEMENTACIÓN DE PERLIN NOISE 2D ====================
-    // Gradientes para ruido Perlin
+    // ==================== PERLIN NOISE MEJORADO ====================
     const grad3 = [
         [1,1,0], [-1,1,0], [1,-1,0], [-1,-1,0],
         [1,0,1], [-1,0,1], [1,0,-1], [-1,0,-1],
@@ -215,6 +214,7 @@ canvas { display:block; cursor: crosshair; }
         114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
     let perm = new Array(512);
     let gradP = new Array(512);
+    
     function seed(seedValue) {
         if (seedValue > 0 && seedValue < 1) seedValue *= 65536;
         seedValue = Math.floor(seedValue);
@@ -239,8 +239,8 @@ canvas { display:block; cursor: crosshair; }
         let ab = perm[X] + Y + 1;
         let ba = perm[X+1] + Y;
         let bb = perm[X+1] + Y + 1;
-        let g00 = gradP[aa]; let g10 = gradP[ba];
-        let g01 = gradP[ab]; let g11 = gradP[bb];
+        let g00 = gradP[aa], g10 = gradP[ba];
+        let g01 = gradP[ab], g11 = gradP[bb];
         let n00 = dot(g00, x, y);
         let n10 = dot(g10, x-1, y);
         let n01 = dot(g01, x, y-1);
@@ -249,51 +249,90 @@ canvas { display:block; cursor: crosshair; }
         let nx1 = lerp(n01, n11, u);
         return lerp(nx0, nx1, v);
     }
-    // Inicializar semilla fija para que el mapa sea consistente
     seed(42);
     
-    // ==================== GENERACIÓN DE MÁSCARA DE ISLA CON PERLIN NOISE ====================
+    // Ruido fractal con múltiples octavas para bordes muy irregulares
+    function fbm(x, y, octaves, persistence, lacunarity) {
+        let value = 0;
+        let amplitude = 1;
+        let frequency = 1;
+        let maxValue = 0;
+        for (let i = 0; i < octaves; i++) {
+            value += amplitude * perlin2D(x * frequency, y * frequency);
+            maxValue += amplitude;
+            amplitude *= persistence;
+            frequency *= lacunarity;
+        }
+        return value / maxValue; // Normalizado entre -1 y 1 aprox
+    }
+    
+    // ==================== GENERACIÓN DE MÁSCARA DE ISLA (CONTINENTE CON BORDES PIXELADOS) ====================
     function generateIslandMask() {
         const mask = new Array(WORLD_SIZE);
         const centerX = WORLD_CENTER, centerY = WORLD_CENTER;
-        const maxDist = WORLD_SIZE / 2;
+        const maxDist = WORLD_SIZE / 2 - 40; // dejar un poco de agua en los bordes extremos
+        
         for (let x = 0; x < WORLD_SIZE; x++) {
             mask[x] = new Array(WORLD_SIZE);
             for (let y = 0; y < WORLD_SIZE; y++) {
                 const dx = x - centerX;
                 const dy = y - centerY;
                 const dist = Math.hypot(dx, dy);
-                // Escala del ruido (frecuencia)
-                const nx = x / 280;
-                const ny = y / 280;
-                let noiseVal = perlin2D(nx, ny);
-                // Añadir una segunda octava para más detalle
-                noiseVal += 0.5 * perlin2D(nx * 2.2, ny * 2.2);
-                noiseVal += 0.25 * perlin2D(nx * 4.5, ny * 4.5);
-                noiseVal = noiseVal / (1 + 0.5 + 0.25); // Normalizar aprox
+                
+                // Escala del ruido (frecuencias altas para bordes muy irregulares)
+                const nx = x / 180;
+                const ny = y / 180;
+                // Usamos 5 octavas para mucho detalle y bordes pixelados/irregulares
+                let noiseVal = fbm(nx, ny, 5, 0.55, 2.1);
+                // Añadimos una octava extra de alta frecuencia para más pixelado
+                noiseVal += 0.3 * perlin2D(x / 45, y / 45);
                 noiseVal = (noiseVal + 1) / 2; // Mapear a [0,1]
-                // Factor radial para que los bordes sean agua (caída suave)
+                
+                // Factor radial para que los bordes sean agua, pero el centro sea siempre tierra
                 let radialFactor = 1.0;
-                if (dist > maxDist * 0.7) {
-                    radialFactor = 1.0 - Math.pow((dist - maxDist*0.7) / (maxDist*0.3), 2);
+                if (dist > maxDist * 0.65) {
+                    // Caída más abrupta para crear acantilados pixelados
+                    radialFactor = 1.0 - Math.pow((dist - maxDist*0.65) / (maxDist*0.35), 1.5);
                     radialFactor = Math.max(0, Math.min(1, radialFactor));
                 }
-                // Umbral de tierra: valor alto de ruido + factor radial
-                const landThreshold = 0.45;
-                const landValue = noiseVal * radialFactor;
-                const isLand = landValue > landThreshold && dist < maxDist - 30;
+                // Añadimos un sesgo para garantizar que el centro es tierra firme
+                let centerBias = 1.0;
+                if (dist < 200) centerBias = 1.2; // fuerza tierra en el núcleo
+                
+                const landValue = noiseVal * radialFactor * centerBias;
+                // Umbral bajo para que la isla sea grande y compacta, pero con bordes muy recortados
+                const isLand = landValue > 0.38 && dist < maxDist - 15;
                 mask[x][y] = isLand;
             }
         }
-        // Asegurar que el centro sea tierra (por si acaso)
-        for (let dx = -40; dx <= 40; dx++) {
-            for (let dy = -40; dy <= 40; dy++) {
-                const cx = WORLD_CENTER + dx, cy = WORLD_CENTER + dy;
-                if (cx >= 0 && cx < WORLD_SIZE && cy >= 0 && cy < WORLD_SIZE) {
-                    mask[cx][cy] = true;
+        
+        // Rellenar pequeños agujeros interiores (para evitar lagos no deseados en el continente)
+        for (let i = 0; i < 8; i++) {
+            for (let x = 1; x < WORLD_SIZE-1; x++) {
+                for (let y = 1; y < WORLD_SIZE-1; y++) {
+                    if (!mask[x][y]) {
+                        let neighbors = 0;
+                        for (let dx = -1; dx <= 1; dx++) {
+                            for (let dy = -1; dy <= 1; dy++) {
+                                if (mask[x+dx][y+dy]) neighbors++;
+                            }
+                        }
+                        if (neighbors >= 7) mask[x][y] = true;
+                    }
                 }
             }
         }
+        
+        // Asegurar que el centro y un área amplia alrededor sean tierra firme
+        for (let dx = -180; dx <= 180; dx++) {
+            for (let dy = -180; dy <= 180; dy++) {
+                const cx = WORLD_CENTER + dx, cy = WORLD_CENTER + dy;
+                if (cx >= 0 && cx < WORLD_SIZE && cy >= 0 && cy < WORLD_SIZE) {
+                    if (Math.hypot(dx, dy) < 150) mask[cx][cy] = true;
+                }
+            }
+        }
+        
         return mask;
     }
     
@@ -311,17 +350,18 @@ canvas { display:block; cursor: crosshair; }
         offCtx.fillStyle = "#7ec8e0";
         offCtx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
         
-        // Dibujar arena con variaciones de color basadas en ruido para textura
-        offCtx.fillStyle = "#e0b05a";
+        // Dibujar arena con textura de ruido para más realismo
         for (let y = 0; y < WORLD_SIZE; y++) {
             for (let x = 0; x < WORLD_SIZE; x++) {
                 if (islandMask[x][y]) {
-                    const variation = (Math.sin(x * 0.03) * Math.cos(y * 0.03) * 20) | 0;
-                    let r = 0xe0 + variation;
-                    let g = 0xb0 + variation * 0.6;
-                    let b = 0x5a + variation * 0.3;
-                    r = Math.min(255, Math.max(200, r));
-                    g = Math.min(255, Math.max(150, g));
+                    // Variación de color basada en ruido para dar textura pixelada
+                    const val = perlin2D(x / 35, y / 35) * 0.5 + 0.5;
+                    const variation = Math.floor(val * 25);
+                    let r = 0xe0 - variation;
+                    let g = 0xb0 - variation * 0.5;
+                    let b = 0x5a - variation * 0.3;
+                    r = Math.min(255, Math.max(190, r));
+                    g = Math.min(255, Math.max(140, g));
                     b = Math.min(255, Math.max(70, b));
                     offCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
                     offCtx.fillRect(x, y, 1, 1);
@@ -329,9 +369,9 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         
-        // Detalles: puntos oscuros (rocas, sombras)
+        // Detalles: puntos oscuros (rocas, sombras) más densos en bordes
         offCtx.fillStyle = "#aa8844";
-        for (let i = 0; i < 12000; i++) {
+        for (let i = 0; i < 15000; i++) {
             const x = Math.floor(Math.random() * WORLD_SIZE);
             const y = Math.floor(Math.random() * WORLD_SIZE);
             if (islandMask[x] && islandMask[x][y]) {
@@ -339,7 +379,7 @@ canvas { display:block; cursor: crosshair; }
             }
         }
         offCtx.fillStyle = "#6a4a2a";
-        for (let i = 0; i < 6000; i++) {
+        for (let i = 0; i < 8000; i++) {
             const x = Math.floor(Math.random() * WORLD_SIZE);
             const y = Math.floor(Math.random() * WORLD_SIZE);
             if (islandMask[x] && islandMask[x][y]) {
@@ -365,7 +405,7 @@ canvas { display:block; cursor: crosshair; }
     let myId = null;
     let players = {};
     let serverPlayers = {};
-    let zone = { x: WORLD_CENTER, y: WORLD_CENTER, radius: 1000 }; // Radio inicial mayor
+    let zone = { x: WORLD_CENTER, y: WORLD_CENTER, radius: 1100 };
     let aliveCount = 0;
     let localPlayerHealth = 100;
     let lastAttackTime = 0;
