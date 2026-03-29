@@ -218,9 +218,11 @@ canvas { display:block; cursor: crosshair; }
     let moveTarget = null;           // { x, y } en coordenadas del mundo
     const STOP_DISTANCE = 12.0;      // distancia para considerar que llegó al destino
     let recentTouch = false;          // evita conflictos con eventos táctiles en móvil
+    let isClickMoving = false;        // indica si el movimiento actual es por point-and-click
     
     function clearMoveTarget() {
         moveTarget = null;
+        isClickMoving = false;
         // No resetear input.dx/dy aquí porque puede que haya teclado activo.
         // Se actualizará en updateMoveTargetDirection.
     }
@@ -235,6 +237,7 @@ canvas { display:block; cursor: crosshair; }
         keyState.a = false;
         keyState.d = false;
         isTouchInput = false;
+        isClickMoving = true;   // activamos el modo click para orientación de sprite
         // No tocamos input.dx/dy directamente; updateMoveTargetDirection los ajustará.
     }
     
@@ -523,7 +526,6 @@ canvas { display:block; cursor: crosshair; }
     canvas.addEventListener("contextmenu", onCanvasContextMenu);
     // Detectar inicios táctiles para evitar falsos clicks en móvil
     canvas.addEventListener("touchstart", onTouchStartForClick);
-    // También aseguramos que en móvil no se dispare un click no deseado después de arrastrar
     // ==========================================================================
     
     setInterval(() => {
@@ -557,14 +559,17 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 
+    // MODIFICACIÓN: lógica de dirección unificada para móvil y point-and-click (prioridad horizontal)
     function getDirectionFromMovement(dx, dy) {
-        if (isTouchInput) {
+        // Si es entrada táctil O movimiento por click, usar prioridad horizontal (como en móvil)
+        if (isTouchInput || isClickMoving) {
             if (Math.abs(dx) > Math.abs(dy)) {
                 return dx > 0 ? 'right' : 'left';
             } else if (Math.abs(dy) > 0.01) {
                 return dy > 0 ? 'down' : 'up';
             }
         } else {
+            // Prioridad vertical para teclado (comportamiento original)
             if (Math.abs(dy) > 0.01) {
                 return dy > 0 ? 'down' : 'up';
             }
