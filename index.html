@@ -448,64 +448,20 @@ canvas { display:block; cursor: crosshair; }
             myId = data.id;
         }
         else if (data.type === 'state') {
-            // Actualización directa sin interpolación: reemplazar completamente el objeto players
-            // con los datos del servidor, pero conservando las animaciones.
-            // Para cada jugador recibido, actualizamos su posición y datos directamente.
-            const newPlayers = {};
-            for (let id in data.players) {
-                const sp = data.players[id];
-                // Si ya existía un jugador, conservamos su objeto de animación
-                if (players[id]) {
-                    newPlayers[id] = players[id]; // tomamos el objeto existente (con anim)
-                    // Sobrescribimos propiedades con los datos del servidor
-                    newPlayers[id].x = sp.x;
-                    newPlayers[id].y = sp.y;
-                    newPlayers[id].health = sp.health;
-                    newPlayers[id].alive = sp.alive;
-                    newPlayers[id].color = sp.color;
-                    newPlayers[id].lastAttackTime = sp.lastAttackTime;
-                } else {
-                    // Nuevo jugador, crear objeto con los datos del servidor
-                    newPlayers[id] = { ...sp };
-                    // Inicializar animación
-                    playerAnim[id] = {
-                        frame: 1,
-                        directionRow: 0,
-                        moving: false,
-                        lastVisualX: sp.x,
-                        lastVisualY: sp.y,
-                        nextFrameTime: performance.now() / 1000 + animInterval,
-                        idleCounter: 0
-                    };
-                }
-            }
-            // Eliminar jugadores que ya no existen en el servidor
-            for (let id in players) {
-                if (!data.players[id]) {
-                    delete playerAnim[id];
-                }
-            }
-            players = newPlayers;
-            
-            // Actualizar zona y conteo
+            serverPlayers = data.players;
             zone = data.zone;
             aliveCount = data.aliveCount;
-            
-            // Actualizar UI de salud local
-            if (myId && players[myId]) {
-                localPlayerHealth = players[myId].health;
+            if (myId && serverPlayers[myId]) {
+                localPlayerHealth = serverPlayers[myId].health;
                 const percent = Math.max(0, (localPlayerHealth / 100) * 100);
                 const healthBar = document.getElementById('healthBar');
                 const healthText = document.getElementById('healthText');
                 if (healthBar) healthBar.style.width = percent + '%';
                 if (healthText) healthText.innerText = `${Math.floor(localPlayerHealth)} HP`;
-                lastAttackTime = players[myId].lastAttackTime;
+                lastAttackTime = serverPlayers[myId].lastAttackTime;
             }
-            
             const aliveCountSpan = document.getElementById('aliveCount');
             if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
-            
-            // Calcular ping
             if (data.timestamp) {
                 let rawPing = Date.now() - data.timestamp;
                 if (rawPing < 0) rawPing = 0;
@@ -565,8 +521,10 @@ canvas { display:block; cursor: crosshair; }
     });
 
     // ============ Configuración de eventos point & click (desktop) ============
+    // Agregar evento click para movimiento con ratón
     canvas.addEventListener("click", onCanvasClick);
     canvas.addEventListener("contextmenu", onCanvasContextMenu);
+    // Detectar inicios táctiles para evitar falsos clicks en móvil
     canvas.addEventListener("touchstart", onTouchStartForClick);
     // ==========================================================================
     
@@ -576,8 +534,31 @@ canvas { display:block; cursor: crosshair; }
         }
     }, 30);
 
-    // Eliminamos interpolateAll porque ya no se usa. La actualización es directa en el onmessage.
-    
+    function interpolateAll() {
+        for (let id in serverPlayers) {
+            const sp = serverPlayers[id];
+            if (!players[id]) {
+                players[id] = { ...sp };
+                playerAnim[id] = {
+                    frame: 1,
+                    directionRow: 0,
+                    moving: false,
+                    lastVisualX: sp.x,
+                    lastVisualY: sp.y,
+                    nextFrameTime: performance.now() / 1000 + animInterval,
+                    idleCounter: 0
+                };
+            } else {
+                players[id].x += (sp.x - players[id].x) * 0.7;
+                players[id].y += (sp.y - players[id].y) * 0.7;
+                players[id].health = sp.health;
+                players[id].color = sp.color;
+                players[id].alive = sp.alive;
+                players[id].lastAttackTime = sp.lastAttackTime;
+            }
+        }
+    }
+
     // MODIFICACIÓN: lógica de dirección unificada para móvil y point-and-click (prioridad horizontal)
     function getDirectionFromMovement(dx, dy) {
         // Si es entrada táctil O movimiento por click, usar prioridad horizontal (como en móvil)
@@ -608,7 +589,6 @@ canvas { display:block; cursor: crosshair; }
             const anim = playerAnim[id];
             if (!anim) continue;
 
-            // Calcular movimiento basado en cambio de posición real desde la última vez que actualizamos lastVisualX/Y
             const deltaX = p.x - anim.lastVisualX;
             const deltaY = p.y - anim.lastVisualY;
             const distance = Math.hypot(deltaX, deltaY);
@@ -802,7 +782,7 @@ canvas { display:block; cursor: crosshair; }
         // Actualizar dirección según el destino point & click (si aplica)
         updateMoveTargetDirection();
         
-        // No llamamos a interpolateAll, las posiciones ya están actualizadas directamente en onmessage
+        interpolateAll();
         updateAnimations();
         draw();
         updateRespawnMessage();
