@@ -10,13 +10,13 @@ const server = app.listen(process.env.PORT || 3000, () => {
 
 const wss = new WebSocket.Server({ server });
 
-const WORLD_SIZE = 1600;
+const WORLD_SIZE = 4000;
 const PLAYER_RADIUS = 8;
 const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
 const ZONE_SHRINK_TIME = 180;
-const ZONE_START_RADIUS = 700;
+const ZONE_START_RADIUS = 1800;   // Ajustado para la isla grande
 const ZONE_MIN_RADIUS = 100;
 const ZONE_DAMAGE_PER_SECOND = 8;
 
@@ -26,12 +26,55 @@ let zoneRadius = ZONE_START_RADIUS;
 let zoneShrinkStartTime = Date.now();
 let lastZoneDamageTime = Date.now();
 
+// ---------- Definición de la isla (misma que en el cliente) ----------
+const CENTER = WORLD_SIZE / 2;
+
+function isWalkable(x, y) {
+  let dx = x - CENTER;
+  let dy = y - CENTER;
+  let dist = Math.hypot(dx, dy);
+  let baseRadius = 1800;
+  
+  // Penínsulas
+  let peninsulas = [
+    { cx: CENTER + 600, cy: CENTER - 400, r: 400 },
+    { cx: CENTER - 500, cy: CENTER + 300, r: 350 },
+    { cx: CENTER + 200, cy: CENTER + 700, r: 300 },
+    { cx: CENTER - 700, cy: CENTER - 200, r: 300 }
+  ];
+  for (let p of peninsulas) {
+    if (Math.hypot(x - p.cx, y - p.cy) < p.r) return true;
+  }
+  
+  let angle = Math.atan2(dy, dx);
+  let ripple = Math.sin(angle * 5) * 50;
+  if (dist < baseRadius + ripple) return true;
+  
+  return false;
+}
+// ----------------------------------------------------------------
+
 class Player {
     constructor(id, ws) {
         this.id = id;
         this.ws = ws;
-        this.x = Math.random() * (WORLD_SIZE - 200) + 100;
-        this.y = Math.random() * (WORLD_SIZE - 200) + 100;
+        // Posición inicial dentro de la isla
+        let placed = false;
+        let tries = 0;
+        while (!placed && tries < 100) {
+            let x = Math.random() * (WORLD_SIZE - 200) + 100;
+            let y = Math.random() * (WORLD_SIZE - 200) + 100;
+            if (isWalkable(x, y)) {
+                this.x = x;
+                this.y = y;
+                placed = true;
+            }
+            tries++;
+        }
+        if (!placed) {
+            this.x = CENTER;
+            this.y = CENTER;
+        }
         this.health = 100;
         this.lastAttackTime = 0;
         this.dx = 0;
@@ -57,8 +100,8 @@ class Player {
         this.health = Math.max(0, this.health - amount);
         if (this.health <= 0) {
             this.alive = false;
-            this.respawnTime = Date.now() + 5000; // 5 segundos
-            return true; // murió
+            this.respawnTime = Date.now() + 5000;
+            return true;
         }
         return false;
     }
@@ -111,10 +154,28 @@ function updateMovement(deltaTime) {
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
-        p.x += p.dx * p.speed * deltaTime;
-        p.y += p.dy * p.speed * deltaTime;
-        p.x = Math.min(Math.max(p.x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-        p.y = Math.min(Math.max(p.y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+        let newX = p.x + p.dx * p.speed * deltaTime;
+        let newY = p.y + p.dy * p.speed * deltaTime;
+        // Restringir movimiento a la isla
+        if (isWalkable(newX, newY)) {
+            p.x = newX;
+            p.y = newY;
+        }
+        // Asegurar que nunca quede fuera por redondeo
+        if (!isWalkable(p.x, p.y)) {
+            // Si por algún motivo está fuera, lo colocamos en el punto más cercano dentro
+            // (búsqueda simple: reducimos hacia el centro hasta encontrar punto válido)
+            let fallbackX = p.x, fallbackY = p.y;
+            for (let step = 0; step < 20; step++) {
+                fallbackX = (fallbackX + CENTER) / 2;
+                fallbackY = (fallbackY + CENTER) / 2;
+                if (isWalkable(fallbackX, fallbackY)) {
+                    p.x = fallbackX;
+                    p.y = fallbackY;
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -131,16 +192,23 @@ function handleCollisionsAndCombat(now) {
             const dist = Math.hypot(dx, dy);
             const minDist = PLAYER_RADIUS * 2;
             if (dist < minDist) {
-                // Separación física
                 const angle = Math.atan2(dy, dx);
                 const overlap = minDist - dist;
                 const moveX = Math.cos(angle) * overlap / 2;
                 const moveY = Math.sin(angle) * overlap / 2;
-                p1.x = Math.min(Math.max(p1.x + moveX, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-                p1.y = Math.min(Math.max(p1.y + moveY, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-                p2.x = Math.min(Math.max(p2.x - moveX, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-                p2.y = Math.min(Math.max(p2.y - moveY, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-                
+                let newX1 = p1.x + moveX;
+                let newY1 = p1.y + moveY;
+                let newX2 = p2.x - moveX;
+                let newY2 = p2.y - moveY;
+                // Validar que las nuevas posiciones estén dentro de la isla
+                if (isWalkable(newX1, newY1)) {
+                    p1.x = newX1;
+                    p1.y = newY1;
+                }
+                if (isWalkable(newX2, newY2)) {
+                    p2.x = newX2;
+                    p2.y = newY2;
+                }
                 const combat = resolveCombat(p1, p2, now);
                 if (combat) {
                     if (combat.firstHit) sendDamageEvent(combat.firstHit);
@@ -189,10 +257,7 @@ function applyZoneDamage(now) {
         const dy = p.y - zoneCenter.y;
         const dist = Math.hypot(dx, dy);
         if (dist > zoneRadius) {
-            const killed = p.takeDamage(ZONE_DAMAGE_PER_SECOND);
-            if (killed) {
-                // Puedes enviar un evento de muerte si lo deseas
-            }
+            p.takeDamage(ZONE_DAMAGE_PER_SECOND);
         }
     }
 }
@@ -207,16 +272,27 @@ function processRespawns() {
             p.lastAttackTime = 0;
             p.dx = 0;
             p.dy = 0;
-            // Posición aleatoria dentro de la zona actual
-            const safeRadius = Math.min(zoneRadius, WORLD_SIZE / 2);
-            const angle = Math.random() * 2 * Math.PI;
-            const radius = Math.random() * safeRadius;
-            let x = zoneCenter.x + Math.cos(angle) * radius;
-            let y = zoneCenter.y + Math.sin(angle) * radius;
-            x = Math.min(Math.max(x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-            y = Math.min(Math.max(y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-            p.x = x;
-            p.y = y;
+            // Buscar posición dentro de la zona actual y dentro de la isla
+            let placed = false;
+            let tries = 0;
+            while (!placed && tries < 100) {
+                const angle = Math.random() * 2 * Math.PI;
+                const radius = Math.random() * Math.min(zoneRadius, 1800);
+                let x = zoneCenter.x + Math.cos(angle) * radius;
+                let y = zoneCenter.y + Math.sin(angle) * radius;
+                x = Math.min(Math.max(x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+                y = Math.min(Math.max(y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+                if (isWalkable(x, y)) {
+                    p.x = x;
+                    p.y = y;
+                    placed = true;
+                }
+                tries++;
+            }
+            if (!placed) {
+                p.x = CENTER;
+                p.y = CENTER;
+            }
             p.respawnTime = null;
         }
     }
