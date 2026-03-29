@@ -10,15 +10,15 @@ const server = app.listen(process.env.PORT || 3000, () => {
 
 const wss = new WebSocket.Server({ server });
 
-const WORLD_SIZE = 2400;
+const WORLD_SIZE = 4000;
 const WORLD_CENTER = WORLD_SIZE / 2;
 const PLAYER_RADIUS = 8;
 const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
 const ZONE_SHRINK_TIME = 180;
-const ZONE_START_RADIUS = 1100;
-const ZONE_MIN_RADIUS = 150;
+const ZONE_START_RADIUS = 1800;
+const ZONE_MIN_RADIUS = 200;
 const ZONE_DAMAGE_PER_SECOND = 8;
 
 let players = {};
@@ -27,7 +27,7 @@ let zoneRadius = ZONE_START_RADIUS;
 let zoneShrinkStartTime = Date.now();
 let lastZoneDamageTime = Date.now();
 
-// ==================== PERLIN NOISE MEJORADO (idéntico al cliente) ====================
+// ==================== PERLIN NOISE AVANZADO (idéntico al cliente) ====================
 const grad3 = [
     [1,1,0], [-1,1,0], [1,-1,0], [-1,-1,0],
     [1,0,1], [-1,0,1], [1,0,-1], [-1,0,-1],
@@ -95,37 +95,37 @@ function fbm(x, y, octaves, persistence, lacunarity) {
     return value / maxValue;
 }
 
-// ==================== MÁSCARA DE ISLA (CONTINENTE CON BORDES MUY IRREGULARES) ====================
+// ==================== MÁSCARA DE TIERRA/AGUA (SIN AGUA INTERIOR) ====================
 let LAND_MASK = null;
 
-function generateIslandMask() {
+function generateLandMask() {
     const mask = new Array(WORLD_SIZE);
-    const maxDist = WORLD_SIZE / 2 - 40;
+    const maxDist = WORLD_SIZE / 2 - 80;
     for (let x = 0; x < WORLD_SIZE; x++) {
         mask[x] = new Array(WORLD_SIZE);
         for (let y = 0; y < WORLD_SIZE; y++) {
             const dx = x - WORLD_CENTER;
             const dy = y - WORLD_CENTER;
             const dist = Math.hypot(dx, dy);
-            const nx = x / 180;
-            const ny = y / 180;
-            let noiseVal = fbm(nx, ny, 5, 0.55, 2.1);
-            noiseVal += 0.3 * perlin2D(x / 45, y / 45);
+            const nx = x / 210;
+            const ny = y / 210;
+            let noiseVal = fbm(nx, ny, 6, 0.55, 2.1);
+            noiseVal += 0.25 * perlin2D(x / 55, y / 55);
             noiseVal = (noiseVal + 1) / 2;
             let radialFactor = 1.0;
             if (dist > maxDist * 0.65) {
-                radialFactor = 1.0 - Math.pow((dist - maxDist*0.65) / (maxDist*0.35), 1.5);
+                radialFactor = 1.0 - Math.pow((dist - maxDist*0.65) / (maxDist*0.35), 1.4);
                 radialFactor = Math.max(0, Math.min(1, radialFactor));
             }
             let centerBias = 1.0;
-            if (dist < 200) centerBias = 1.2;
+            if (dist < 250) centerBias = 1.3;
             const landValue = noiseVal * radialFactor * centerBias;
-            const isLand = landValue > 0.38 && dist < maxDist - 15;
+            const isLand = landValue > 0.42 && dist < maxDist - 20;
             mask[x][y] = isLand;
         }
     }
-    // Rellenar pequeños agujeros interiores
-    for (let i = 0; i < 8; i++) {
+    // Rellenar agujeros interiores (eliminar charcos)
+    for (let iter = 0; iter < 12; iter++) {
         for (let x = 1; x < WORLD_SIZE-1; x++) {
             for (let y = 1; y < WORLD_SIZE-1; y++) {
                 if (!mask[x][y]) {
@@ -137,15 +137,6 @@ function generateIslandMask() {
                     }
                     if (neighbors >= 7) mask[x][y] = true;
                 }
-            }
-        }
-    }
-    // Asegurar núcleo central sólido
-    for (let dx = -180; dx <= 180; dx++) {
-        for (let dy = -180; dy <= 180; dy++) {
-            const cx = WORLD_CENTER + dx, cy = WORLD_CENTER + dy;
-            if (cx >= 0 && cx < WORLD_SIZE && cy >= 0 && cy < WORLD_SIZE && Math.hypot(dx, dy) < 150) {
-                mask[cx][cy] = true;
             }
         }
     }
@@ -162,7 +153,7 @@ function isLand(x, y) {
 
 function clampToLand(player) {
     if (isLand(player.x, player.y)) return;
-    for (let radius = 1; radius <= 80; radius++) {
+    for (let radius = 1; radius <= 100; radius++) {
         for (let dx = -radius; dx <= radius; dx++) {
             for (let dy = -radius; dy <= radius; dy++) {
                 const nx = player.x + dx, ny = player.y + dy;
@@ -174,15 +165,15 @@ function clampToLand(player) {
 }
 
 function getRandomLandPosition() {
-    for (let attempts = 0; attempts < 500; attempts++) {
-        const x = Math.random() * (WORLD_SIZE - 200) + 100;
-        const y = Math.random() * (WORLD_SIZE - 200) + 100;
+    for (let attempts = 0; attempts < 800; attempts++) {
+        const x = Math.random() * (WORLD_SIZE - 300) + 150;
+        const y = Math.random() * (WORLD_SIZE - 300) + 150;
         if (isLand(x, y)) return { x, y };
     }
     return { x: WORLD_CENTER, y: WORLD_CENTER };
 }
 
-LAND_MASK = generateIslandMask();
+LAND_MASK = generateLandMask();
 
 // ==================== FIN SISTEMA DE TERRENO ====================
 
@@ -335,7 +326,7 @@ function processRespawns() {
             p.lastAttackTime = 0;
             p.dx = p.dy = 0;
             let placed = false;
-            for (let attempts = 0; attempts < 100; attempts++) {
+            for (let attempts = 0; attempts < 150; attempts++) {
                 const safeRadius = Math.min(zoneRadius, WORLD_SIZE/2);
                 const angle = Math.random() * 2 * Math.PI;
                 const radius = Math.random() * safeRadius;
