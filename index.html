@@ -214,36 +214,48 @@ canvas { display:block; cursor: crosshair; }
     
     let input = { dx: 0, dy: 0 };
     
-    let moveTarget = null;
-    const STOP_DISTANCE = 12.0;
-    let recentTouch = false;
-    let isClickMoving = false;
+    // ===================== POINT & CLICK (DESKTOP) =====================
+    let moveTarget = null;           // { x, y } en coordenadas del mundo
+    const STOP_DISTANCE = 12.0;      // distancia para considerar que llegó al destino
+    let recentTouch = false;          // evita conflictos con eventos táctiles en móvil
+    let isClickMoving = false;        // indica si el movimiento actual es por point-and-click
     
     function clearMoveTarget() {
         moveTarget = null;
         isClickMoving = false;
+        // No resetear input.dx/dy aquí porque puede que haya teclado activo.
+        // Se actualizará en updateMoveTargetDirection.
     }
     
     function setMoveTarget(worldX, worldY) {
         if (!players[myId] || !players[myId].alive) return;
         moveTarget = { x: worldX, y: worldY };
+        // Al fijar nuevo destino, desactivamos cualquier entrada manual previa (teclado/touch)
+        // para evitar conflictos.
         keyState.w = false;
         keyState.s = false;
         keyState.a = false;
         keyState.d = false;
         isTouchInput = false;
-        isClickMoving = true;
+        isClickMoving = true;   // activamos el modo click para orientación de sprite
+        // No tocamos input.dx/dy directamente; updateMoveTargetDirection los ajustará.
     }
     
     function updateMoveTargetDirection() {
+        // Si el jugador local no existe o está muerto, cancelar cualquier destino
         if (!players[myId] || !players[myId].alive) {
             if (moveTarget) clearMoveTarget();
             return;
         }
+        
+        // Si hay entrada activa por teclado o touch drag, cancelar el movimiento automático
         if (keyState.w || keyState.s || keyState.a || keyState.d || isTouchInput) {
             if (moveTarget) clearMoveTarget();
             return;
         }
+        
+        // Si no hay destino, no hacemos nada (input se quedará como está, pero si no hay teclado
+        // ni touch, input debería ser 0. Lo aseguramos)
         if (!moveTarget) {
             if (input.dx !== 0 || input.dy !== 0) {
                 input.dx = 0;
@@ -251,16 +263,21 @@ canvas { display:block; cursor: crosshair; }
             }
             return;
         }
+        
         const local = players[myId];
         const dxTarget = moveTarget.x - local.x;
         const dyTarget = moveTarget.y - local.y;
         const distance = Math.hypot(dxTarget, dyTarget);
+        
+        // Si estamos suficientemente cerca, detener y limpiar destino
         if (distance < STOP_DISTANCE) {
             clearMoveTarget();
             input.dx = 0;
             input.dy = 0;
             return;
         }
+        
+        // Calcular vector dirección normalizado hacia el destino
         const mag = distance;
         const normX = dxTarget / mag;
         const normY = dyTarget / mag;
@@ -268,6 +285,7 @@ canvas { display:block; cursor: crosshair; }
         input.dy = normY;
     }
     
+    // Función para convertir coordenadas de pantalla a mundo (teniendo en cuenta la cámara)
     function screenToWorld(clientX, clientY) {
         const localPlayer = players[myId];
         if (!localPlayer) return { x: 0, y: 0 };
@@ -278,34 +296,47 @@ canvas { display:block; cursor: crosshair; }
         return { x: worldX, y: worldY };
     }
     
+    // Manejador de click (point & click) solo para desktop, sin interferir con táctil
     function onCanvasClick(e) {
+        // Evitar clicks que vengan de interacción táctil reciente (móvil)
         if (recentTouch) {
             recentTouch = false;
             return;
         }
+        // Prevenir comportamientos extraños
         e.preventDefault();
+        // Solo actuar si el jugador está vivo y el juego tiene ID
         if (!myId) return;
         if (!players[myId] || !players[myId].alive) return;
+        
+        // Obtener coordenadas del clic en el canvas
         const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
+        const scaleX = canvas.width / rect.width;   // por si hay CSS, pero canvas tamaño real
         const scaleY = canvas.height / rect.height;
         let clickCanvasX = (e.clientX - rect.left) * scaleX;
         let clickCanvasY = (e.clientY - rect.top) * scaleY;
+        // Asegurar límites dentro del canvas
         clickCanvasX = Math.min(Math.max(0, clickCanvasX), canvas.width);
         clickCanvasY = Math.min(Math.max(0, clickCanvasY), canvas.height);
+        
         const worldPos = screenToWorld(clickCanvasX, clickCanvasY);
+        // Establecer nuevo destino (esto desactiva teclado/touch automáticamente)
         setMoveTarget(worldPos.x, worldPos.y);
     }
     
     function onCanvasContextMenu(e) {
-        e.preventDefault();
+        e.preventDefault(); // Evitar menú contextual al hacer click derecho
         return false;
     }
     
+    // Detectar eventos táctiles para marcar "recentTouch" y evitar conflictos de click en móviles
     function onTouchStartForClick(e) {
         recentTouch = true;
+        // Limpiar el flag después de un tiempo prudencial (para que no afecte a clicks legítimos)
         setTimeout(() => { recentTouch = false; }, 300);
     }
+    
+    // ===================== FIN POINT & CLICK =====================
     
     function updateInputFromKeys() {
         let rawDx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
@@ -315,7 +346,7 @@ canvas { display:block; cursor: crosshair; }
     }
     
     function handleKeyDown(e) {
-        const key = e.key.toLowerCase();
+        const key = e.key;
         let changed = false;
         if (key === 'w') { keyState.w = true; changed = true; e.preventDefault(); }
         else if (key === 's') { keyState.s = true; changed = true; e.preventDefault(); }
@@ -324,12 +355,13 @@ canvas { display:block; cursor: crosshair; }
         if (changed) {
             updateInputFromKeys();
             isTouchInput = false;
+            // Al presionar tecla, cancelamos cualquier destino automático
             if (moveTarget) clearMoveTarget();
         }
     }
     
     function handleKeyUp(e) {
-        const key = e.key.toLowerCase();
+        const key = e.key;
         let changed = false;
         if (key === 'w') { keyState.w = false; changed = true; e.preventDefault(); }
         else if (key === 's') { keyState.s = false; changed = true; e.preventDefault(); }
@@ -416,20 +448,64 @@ canvas { display:block; cursor: crosshair; }
             myId = data.id;
         }
         else if (data.type === 'state') {
-            serverPlayers = data.players;
+            // Actualización directa sin interpolación: reemplazar completamente el objeto players
+            // con los datos del servidor, pero conservando las animaciones.
+            // Para cada jugador recibido, actualizamos su posición y datos directamente.
+            const newPlayers = {};
+            for (let id in data.players) {
+                const sp = data.players[id];
+                // Si ya existía un jugador, conservamos su objeto de animación
+                if (players[id]) {
+                    newPlayers[id] = players[id]; // tomamos el objeto existente (con anim)
+                    // Sobrescribimos propiedades con los datos del servidor
+                    newPlayers[id].x = sp.x;
+                    newPlayers[id].y = sp.y;
+                    newPlayers[id].health = sp.health;
+                    newPlayers[id].alive = sp.alive;
+                    newPlayers[id].color = sp.color;
+                    newPlayers[id].lastAttackTime = sp.lastAttackTime;
+                } else {
+                    // Nuevo jugador, crear objeto con los datos del servidor
+                    newPlayers[id] = { ...sp };
+                    // Inicializar animación
+                    playerAnim[id] = {
+                        frame: 1,
+                        directionRow: 0,
+                        moving: false,
+                        lastVisualX: sp.x,
+                        lastVisualY: sp.y,
+                        nextFrameTime: performance.now() / 1000 + animInterval,
+                        idleCounter: 0
+                    };
+                }
+            }
+            // Eliminar jugadores que ya no existen en el servidor
+            for (let id in players) {
+                if (!data.players[id]) {
+                    delete playerAnim[id];
+                }
+            }
+            players = newPlayers;
+            
+            // Actualizar zona y conteo
             zone = data.zone;
             aliveCount = data.aliveCount;
-            if (myId && serverPlayers[myId]) {
-                localPlayerHealth = serverPlayers[myId].health;
+            
+            // Actualizar UI de salud local
+            if (myId && players[myId]) {
+                localPlayerHealth = players[myId].health;
                 const percent = Math.max(0, (localPlayerHealth / 100) * 100);
                 const healthBar = document.getElementById('healthBar');
                 const healthText = document.getElementById('healthText');
                 if (healthBar) healthBar.style.width = percent + '%';
                 if (healthText) healthText.innerText = `${Math.floor(localPlayerHealth)} HP`;
-                lastAttackTime = serverPlayers[myId].lastAttackTime;
+                lastAttackTime = players[myId].lastAttackTime;
             }
+            
             const aliveCountSpan = document.getElementById('aliveCount');
             if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
+            
+            // Calcular ping
             if (data.timestamp) {
                 let rawPing = Date.now() - data.timestamp;
                 if (rawPing < 0) rawPing = 0;
@@ -466,6 +542,7 @@ canvas { display:block; cursor: crosshair; }
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
         isTouchInput = true;
+        // Al iniciar touch, cancelamos cualquier destino point&click
         if (moveTarget) clearMoveTarget();
     });
     canvas.addEventListener("touchmove", (e) => {
@@ -484,11 +561,14 @@ canvas { display:block; cursor: crosshair; }
         input.dx = 0;
         input.dy = 0;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
+        // Al soltar el touch, no cancelamos destino automáticamente porque ya no hay arrastre
     });
 
+    // ============ Configuración de eventos point & click (desktop) ============
     canvas.addEventListener("click", onCanvasClick);
     canvas.addEventListener("contextmenu", onCanvasContextMenu);
     canvas.addEventListener("touchstart", onTouchStartForClick);
+    // ==========================================================================
     
     setInterval(() => {
         if (ws.readyState === 1 && myId) {
@@ -496,39 +576,11 @@ canvas { display:block; cursor: crosshair; }
         }
     }, 30);
 
-    function interpolateAll() {
-        const currentPlayerIds = new Set(Object.keys(serverPlayers));
-        for (let id in players) {
-            if (!currentPlayerIds.has(id)) {
-                delete players[id];
-                delete playerAnim[id];
-            }
-        }
-        for (let id in serverPlayers) {
-            const sp = serverPlayers[id];
-            if (!players[id]) {
-                players[id] = { ...sp };
-                playerAnim[id] = {
-                    frame: 1,
-                    directionRow: 0,
-                    moving: false,
-                    lastVisualX: sp.x,
-                    lastVisualY: sp.y,
-                    nextFrameTime: performance.now() / 1000 + animInterval,
-                    idleCounter: 0
-                };
-            } else {
-                players[id].x += (sp.x - players[id].x) * 0.7;
-                players[id].y += (sp.y - players[id].y) * 0.7;
-                players[id].health = sp.health;
-                players[id].color = sp.color;
-                players[id].alive = sp.alive;
-                players[id].lastAttackTime = sp.lastAttackTime;
-            }
-        }
-    }
-
+    // Eliminamos interpolateAll porque ya no se usa. La actualización es directa en el onmessage.
+    
+    // MODIFICACIÓN: lógica de dirección unificada para móvil y point-and-click (prioridad horizontal)
     function getDirectionFromMovement(dx, dy) {
+        // Si es entrada táctil O movimiento por click, usar prioridad horizontal (como en móvil)
         if (isTouchInput || isClickMoving) {
             if (Math.abs(dx) > Math.abs(dy)) {
                 return dx > 0 ? 'right' : 'left';
@@ -536,6 +588,7 @@ canvas { display:block; cursor: crosshair; }
                 return dy > 0 ? 'down' : 'up';
             }
         } else {
+            // Prioridad vertical para teclado (comportamiento original)
             if (Math.abs(dy) > 0.01) {
                 return dy > 0 ? 'down' : 'up';
             }
@@ -555,6 +608,7 @@ canvas { display:block; cursor: crosshair; }
             const anim = playerAnim[id];
             if (!anim) continue;
 
+            // Calcular movimiento basado en cambio de posición real desde la última vez que actualizamos lastVisualX/Y
             const deltaX = p.x - anim.lastVisualX;
             const deltaY = p.y - anim.lastVisualY;
             const distance = Math.hypot(deltaX, deltaY);
@@ -736,6 +790,7 @@ canvas { display:block; cursor: crosshair; }
             let remaining = Math.max(0, Math.ceil(5 - elapsed));
             if (countdownSpan) countdownSpan.innerText = remaining;
             if (msgDiv) msgDiv.style.display = 'block';
+            // Al morir, cancelar cualquier destino point & click
             if (moveTarget) clearMoveTarget();
         } else {
             if (deathTime !== null) deathTime = null;
@@ -744,8 +799,10 @@ canvas { display:block; cursor: crosshair; }
     }
 
     function gameLoop() {
+        // Actualizar dirección según el destino point & click (si aplica)
         updateMoveTargetDirection();
-        interpolateAll();
+        
+        // No llamamos a interpolateAll, las posiciones ya están actualizadas directamente en onmessage
         updateAnimations();
         draw();
         updateRespawnMessage();
