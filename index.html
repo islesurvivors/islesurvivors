@@ -5,7 +5,6 @@
 <style>
 body { margin:0; overflow:hidden; background:#111; font-family: 'Segoe UI', Arial, sans-serif; }
 canvas { display:block; cursor: crosshair; }
-
 #ui {
     position: fixed;
     top: 10px;
@@ -18,7 +17,6 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
     z-index: 10;
 }
-
 #ping {
     position: fixed;
     top: 10px;
@@ -31,7 +29,6 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
     z-index: 10;
 }
-
 #health {
     position: fixed;
     bottom: 20px;
@@ -44,14 +41,12 @@ canvas { display:block; cursor: crosshair; }
     border: 1px solid #fff;
     z-index: 10;
 }
-
 #healthBar {
     width: 100%;
     height: 100%;
     background: #ff3333;
     transition: width 0.2s;
 }
-
 #healthText {
     position: absolute;
     width: 100%;
@@ -62,7 +57,6 @@ canvas { display:block; cursor: crosshair; }
     font-size: 12px;
     text-shadow: 1px 1px 0 black;
 }
-
 #controlsInfo {
     position: fixed;
     bottom: 10px;
@@ -74,7 +68,6 @@ canvas { display:block; cursor: crosshair; }
     font-size: 12px;
     pointer-events: none;
 }
-
 #animSpeedControl {
     position: fixed;
     bottom: 20px;
@@ -98,7 +91,6 @@ canvas { display:block; cursor: crosshair; }
     min-width: 55px;
     text-align: center;
 }
-
 #debugAnim {
     position: fixed;
     bottom: 80px;
@@ -112,7 +104,6 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
     z-index: 20;
 }
-
 .damageNumber {
     position: absolute;
     font-weight: bold;
@@ -122,12 +113,10 @@ canvas { display:block; cursor: crosshair; }
     pointer-events: none;
     z-index: 20;
 }
-
 @keyframes floatUp {
     0% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-40px); }
 }
-
 #respawnMessage {
     position: fixed;
     top: 50%;
@@ -146,14 +135,12 @@ canvas { display:block; cursor: crosshair; }
     box-shadow: 0 0 20px rgba(0,0,0,0.5);
     border: 1px solid rgba(255,255,255,0.2);
 }
-
 #respawnText {
     font-size: 20px;
     font-weight: 400;
     margin-bottom: 12px;
     opacity: 0.9;
 }
-
 #respawnCountdown {
     font-size: 64px;
     font-weight: 700;
@@ -190,41 +177,35 @@ canvas { display:block; cursor: crosshair; }
     <div id="respawnText">Reapareciendo en</div>
     <div id="respawnCountdown">5</div>
 </div>
-
 <script>
 (function() {
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
-
     const WORLD_SIZE = 4000;
-
     let myId = null;
     let players = {};
     let serverPlayers = {};
+    let snapshots = [];
+    const INTERPOLATION_DELAY = 120;
     let aliveCount = 0;
     let localPlayerHealth = 100;
     let lastAttackTime = 0;
     let attackCooldown = 0.8;
-
     const keyState = {
         w: false,
         s: false,
         a: false,
         d: false
     };
-
     let input = { dx: 0, dy: 0 };
-
     let moveTarget = null;
     const STOP_DISTANCE = 12.0;
     let recentTouch = false;
     let isClickMoving = false;
-
     function clearMoveTarget() {
         moveTarget = null;
         isClickMoving = false;
     }
-
     function setMoveTarget(worldX, worldY) {
         if (!players[myId] || !players[myId].alive) return;
         moveTarget = { x: worldX, y: worldY };
@@ -235,18 +216,15 @@ canvas { display:block; cursor: crosshair; }
         isTouchInput = false;
         isClickMoving = true;
     }
-
     function updateMoveTargetDirection() {
         if (!players[myId] || !players[myId].alive) {
             if (moveTarget) clearMoveTarget();
             return;
         }
-
         if (keyState.w || keyState.s || keyState.a || keyState.d || isTouchInput) {
             if (moveTarget) clearMoveTarget();
             return;
         }
-
         if (!moveTarget) {
             if (input.dx !== 0 || input.dy !== 0) {
                 input.dx = 0;
@@ -254,26 +232,22 @@ canvas { display:block; cursor: crosshair; }
             }
             return;
         }
-
         const local = players[myId];
         const dxTarget = moveTarget.x - local.x;
         const dyTarget = moveTarget.y - local.y;
         const distance = Math.hypot(dxTarget, dyTarget);
-
         if (distance < STOP_DISTANCE) {
             clearMoveTarget();
             input.dx = 0;
             input.dy = 0;
             return;
         }
-
         const mag = distance;
         const normX = dxTarget / mag;
         const normY = dyTarget / mag;
         input.dx = normX;
         input.dy = normY;
     }
-
     function screenToWorld(clientX, clientY) {
         const localPlayer = players[myId];
         if (!localPlayer) return { x: 0, y: 0 };
@@ -283,7 +257,6 @@ canvas { display:block; cursor: crosshair; }
         const worldY = clientY + camY;
         return { x: worldX, y: worldY };
     }
-
     function onCanvasClick(e) {
         if (recentTouch) {
             recentTouch = false;
@@ -292,7 +265,6 @@ canvas { display:block; cursor: crosshair; }
         e.preventDefault();
         if (!myId) return;
         if (!players[myId] || !players[myId].alive) return;
-
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
@@ -300,28 +272,23 @@ canvas { display:block; cursor: crosshair; }
         let clickCanvasY = (e.clientY - rect.top) * scaleY;
         clickCanvasX = Math.min(Math.max(0, clickCanvasX), canvas.width);
         clickCanvasY = Math.min(Math.max(0, clickCanvasY), canvas.height);
-
         const worldPos = screenToWorld(clickCanvasX, clickCanvasY);
         setMoveTarget(worldPos.x, worldPos.y);
     }
-
     function onCanvasContextMenu(e) {
         e.preventDefault();
         return false;
     }
-
     function onTouchStartForClick(e) {
         recentTouch = true;
         setTimeout(() => { recentTouch = false; }, 300);
     }
-
     function updateInputFromKeys() {
         let rawDx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
         let rawDy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
         input.dx = rawDx;
         input.dy = rawDy;
     }
-
     function handleKeyDown(e) {
         const key = e.key;
         let changed = false;
@@ -335,7 +302,6 @@ canvas { display:block; cursor: crosshair; }
             if (moveTarget) clearMoveTarget();
         }
     }
-
     function handleKeyUp(e) {
         const key = e.key;
         let changed = false;
@@ -345,18 +311,15 @@ canvas { display:block; cursor: crosshair; }
         else if (key === 'd') { keyState.d = false; changed = true; e.preventDefault(); }
         if (changed) updateInputFromKeys();
     }
-
     document.removeEventListener("keydown", window._oldKeyDown);
     document.removeEventListener("keyup", window._oldKeyUp);
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
     window._oldKeyDown = handleKeyDown;
     window._oldKeyUp = handleKeyUp;
-
     let deathTime = null;
     let pingHistory = [];
     const PING_HISTORY_LEN = 5;
-
     const SPRITE_URL = "ch003.png";
     const TOTAL_IMAGE_SIZE = 128;
     const TILES_PER_ROW = 4;
@@ -368,19 +331,16 @@ canvas { display:block; cursor: crosshair; }
     const CROP_TOP = 0;
     const CROP_WIDTH = TILE_SIZE - CROP_LEFT;
     const CROP_HEIGHT = TILE_SIZE - CROP_TOP;
-
     let spriteSheet = new Image();
     let spriteLoaded = false;
     spriteSheet.onload = () => { spriteLoaded = true; };
     spriteSheet.src = SPRITE_URL;
-
     const DIRECTION_TO_ROW = {
         down: 0,
         up: 1,
         left: 2,
         right: 3
     };
-
     let animInterval = 0.25;
     const slider = document.getElementById('animSpeedSlider');
     const speedValue = document.getElementById('animSpeedValue');
@@ -390,13 +350,10 @@ canvas { display:block; cursor: crosshair; }
             speedValue.innerText = animInterval.toFixed(2) + ' s';
         });
     }
-
     let playerAnim = {};
     const currentFrameSpan = document.getElementById('currentFrame');
     const timeToNextSpan = document.getElementById('timeToNext');
-
     let isTouchInput = false;
-
     function getPlayerColor(id, isMe, serverColor) {
         if (isMe) return "#88ff88";
         if (serverColor) return serverColor;
@@ -408,32 +365,33 @@ canvas { display:block; cursor: crosshair; }
         const hue = Math.abs(hash % 360);
         return `hsl(${hue}, 70%, 55%)`;
     }
-
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
     }
     resize();
     window.addEventListener("resize", resize);
-
     const ws = new WebSocket(location.origin.replace("http", "ws"));
-
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
         if (data.type === 'init') {
             myId = data.id;
         }
         else if (data.type === 'state') {
-            serverPlayers = data.players;
-            aliveCount = data.aliveCount;
-            if (myId && serverPlayers[myId]) {
-                localPlayerHealth = serverPlayers[myId].health;
+            snapshots.push({
+                time: data.timestamp,
+                players: data.players
+            });
+            if (snapshots.length > 20) snapshots.shift();
+            aliveCount = Object.keys(data.players).filter(id => data.players[id].alive).length;
+            if (myId && data.players[myId]) {
+                localPlayerHealth = data.players[myId].health;
                 const percent = Math.max(0, (localPlayerHealth / 100) * 100);
                 const healthBar = document.getElementById('healthBar');
                 const healthText = document.getElementById('healthText');
                 if (healthBar) healthBar.style.width = percent + '%';
                 if (healthText) healthText.innerText = `${Math.floor(localPlayerHealth)} HP`;
-                lastAttackTime = serverPlayers[myId].lastAttackTime;
+                lastAttackTime = data.players[myId].lastAttackTime || lastAttackTime;
             }
             const aliveCountSpan = document.getElementById('aliveCount');
             if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
@@ -455,7 +413,6 @@ canvas { display:block; cursor: crosshair; }
             }
         }
     };
-
     function showDamageNumber(damage, isMe, targetId) {
         const div = document.createElement('div');
         div.className = 'damageNumber';
@@ -466,7 +423,6 @@ canvas { display:block; cursor: crosshair; }
         document.body.appendChild(div);
         setTimeout(() => div.remove(), 800);
     }
-
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
@@ -492,42 +448,96 @@ canvas { display:block; cursor: crosshair; }
         input.dy = 0;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
     });
-
     canvas.addEventListener("click", onCanvasClick);
     canvas.addEventListener("contextmenu", onCanvasContextMenu);
     canvas.addEventListener("touchstart", onTouchStartForClick);
-
     setInterval(() => {
         if (ws.readyState === 1 && myId) {
             ws.send(JSON.stringify({ type: "move", dx: input.dx, dy: input.dy }));
         }
     }, 30);
-
     function interpolateAll() {
-        for (let id in serverPlayers) {
-            const sp = serverPlayers[id];
+        const now = Date.now();
+        const renderTime = now - INTERPOLATION_DELAY;
+        if (snapshots.length < 2) {
+            if (snapshots.length === 1) {
+                const sp = snapshots[0].players;
+                for (let id in sp) {
+                    if (!players[id]) {
+                        players[id] = { ...sp[id] };
+                        playerAnim[id] = {
+                            frame: 1,
+                            directionRow: 0,
+                            moving: false,
+                            lastVisualX: sp[id].x,
+                            lastVisualY: sp[id].y,
+                            nextFrameTime: performance.now() / 1000 + animInterval,
+                            idleCounter: 0
+                        };
+                    } else {
+                        players[id].x = sp[id].x;
+                        players[id].y = sp[id].y;
+                        players[id].health = sp[id].health;
+                        players[id].alive = sp[id].alive;
+                        if (sp[id].color) players[id].color = sp[id].color;
+                    }
+                }
+            }
+            return;
+        }
+        let older = null;
+        let newer = null;
+        for (let i = 0; i < snapshots.length - 1; i++) {
+            if (snapshots[i].time <= renderTime && snapshots[i+1].time >= renderTime) {
+                older = snapshots[i];
+                newer = snapshots[i+1];
+                break;
+            }
+        }
+        if (!older || !newer) {
+            older = snapshots[snapshots.length - 2];
+            newer = snapshots[snapshots.length - 1];
+        }
+        const t0 = older.time;
+        const t1 = newer.time;
+        let factor = 0;
+        if (t1 !== t0) {
+            factor = (renderTime - t0) / (t1 - t0);
+            factor = Math.max(0, Math.min(1, factor));
+        }
+        const sp0 = older.players;
+        const sp1 = newer.players;
+        for (let id in sp1) {
+            const p0 = sp0[id] || sp1[id];
+            const p1 = sp1[id];
             if (!players[id]) {
-                players[id] = { ...sp };
+                players[id] = { ...p1 };
                 playerAnim[id] = {
                     frame: 1,
                     directionRow: 0,
                     moving: false,
-                    lastVisualX: sp.x,
-                    lastVisualY: sp.y,
+                    lastVisualX: p1.x,
+                    lastVisualY: p1.y,
                     nextFrameTime: performance.now() / 1000 + animInterval,
                     idleCounter: 0
                 };
             } else {
-                players[id].x += (sp.x - players[id].x) * 1;
-                players[id].y += (sp.y - players[id].y) * 1;
-                players[id].health = sp.health;
-                players[id].color = sp.color;
-                players[id].alive = sp.alive;
-                players[id].lastAttackTime = sp.lastAttackTime;
+                const x = p0.x + (p1.x - p0.x) * factor;
+                const y = p0.y + (p1.y - p0.y) * factor;
+                players[id].x = x;
+                players[id].y = y;
+                players[id].health = p1.health;
+                players[id].alive = p1.alive;
+                if (p1.color) players[id].color = p1.color;
+            }
+        }
+        for (let id in players) {
+            if (!sp1[id]) {
+                delete players[id];
+                delete playerAnim[id];
             }
         }
     }
-
     function getDirectionFromMovement(dx, dy) {
         if (isTouchInput || isClickMoving) {
             if (Math.abs(dx) > Math.abs(dy)) {
@@ -545,28 +555,21 @@ canvas { display:block; cursor: crosshair; }
         }
         return null;
     }
-
     function updateAnimations() {
         const now = performance.now() / 1000;
         for (let id in players) {
             const p = players[id];
             if (!p.alive) continue;
-
             const anim = playerAnim[id];
             if (!anim) continue;
-
             const deltaX = p.x - anim.lastVisualX;
             const deltaY = p.y - anim.lastVisualY;
             const distance = Math.hypot(deltaX, deltaY);
-
             anim.lastVisualX = p.x;
             anim.lastVisualY = p.y;
-
             const MOVEMENT_THRESHOLD = 0.5;
             const DIRECTION_THRESHOLD = 2.0;
-
             const isMoving = distance > MOVEMENT_THRESHOLD;
-
             if (isMoving) {
                 anim.idleCounter = 0;
                 if (!anim.moving) {
@@ -583,7 +586,6 @@ canvas { display:block; cursor: crosshair; }
                     }
                 }
             }
-
             if (distance > DIRECTION_THRESHOLD) {
                 const direction = getDirectionFromMovement(deltaX, deltaY);
                 if (direction) {
@@ -597,12 +599,10 @@ canvas { display:block; cursor: crosshair; }
                     }
                 }
             }
-
             if (anim.moving && now >= anim.nextFrameTime) {
                 anim.frame = (anim.frame + 1) % 4;
                 anim.nextFrameTime = now + animInterval;
             }
-
             if (id === myId) {
                 if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
                 if (timeToNextSpan) {
@@ -613,14 +613,11 @@ canvas { display:block; cursor: crosshair; }
         }
     }
 function drawGround(camX, camY) {
-    // Agua
     ctx.fillStyle = "#1e78a8";
     ctx.fillRect(camX, camY, canvas.width, canvas.height);
-
     const gridSpacing = 80;
     const startX = Math.floor(camX / gridSpacing) * gridSpacing;
     const startY = Math.floor(camY / gridSpacing) * gridSpacing;
-
     ctx.fillStyle = "rgba(255,255,255,0.08)";
     for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
         for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
@@ -628,41 +625,31 @@ function drawGround(camX, camY) {
             ctx.arc(x, y, 2.5, 0, Math.PI * 2);
             ctx.fill();
         }
-    
-
-    // Isla segura
+    }
     const SAFE_ZONE_SIZE = 260;
     const centerX = 4000 / 2;
     const centerY = 4000 / 2;
-
     const islandX = centerX - SAFE_ZONE_SIZE / 2;
     const islandY = centerY - SAFE_ZONE_SIZE / 2;
-
     ctx.fillStyle = "#d9bf73";
     ctx.fillRect(islandX, islandY, SAFE_ZONE_SIZE, SAFE_ZONE_SIZE);
-
     ctx.strokeStyle = "rgba(255,255,255,0.3)";
     ctx.lineWidth = 4;
     ctx.strokeRect(islandX + 2, islandY + 2, SAFE_ZONE_SIZE - 4, SAFE_ZONE_SIZE - 4);
-}}
-
+}
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const localPlayer = players[myId];
         if (!localPlayer) return;
-
         let camX = localPlayer.x - canvas.width / 2;
         let camY = localPlayer.y - canvas.height / 2;
         camX = Math.max(0, Math.min(camX, Math.max(0, WORLD_SIZE - canvas.width)));
         camY = Math.max(0, Math.min(camY, Math.max(0, WORLD_SIZE - canvas.height)));
-
         ctx.save();
         ctx.translate(-camX, -camY);
         drawGround(camX, camY);
-
         const barWidth = 32;
         const barHeight = 6;
-
         const playerList = [];
         for (let id in players) {
             if (players[id].alive) {
@@ -670,13 +657,11 @@ function drawGround(camX, camY) {
             }
         }
         playerList.sort((a, b) => a.p.y - b.p.y);
-
         for (const { id, p } of playerList) {
             const isMe = (id === myId);
             const anim = playerAnim[id] || { frame: 1, directionRow: 0 };
             const row = anim.directionRow;
             const frameCol = anim.frame;
-
             if (spriteLoaded) {
                 const srcX = frameCol * TILE_SIZE + CROP_LEFT;
                 const srcY = row * TILE_SIZE + CROP_TOP;
@@ -694,7 +679,6 @@ function drawGround(camX, camY) {
                 ctx.lineWidth = 2;
                 ctx.stroke();
             }
-
             const healthPercent = p.health / 100;
             const barX = p.x - barWidth / 2;
             const barY = p.y - SPRITE_H/2 - 12;
@@ -702,12 +686,10 @@ function drawGround(camX, camY) {
             ctx.fillRect(barX, barY, barWidth, barHeight);
             ctx.fillStyle = "#ff3333";
             ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
-
             ctx.font = "12px Arial";
             ctx.fillStyle = "white";
             ctx.shadowBlur = 2;
             ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
-
             if (isMe && lastAttackTime) {
                 const now = Date.now() / 1000;
                 const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
@@ -722,7 +704,6 @@ function drawGround(camX, camY) {
         }
         ctx.restore();
     }
-
     function updateRespawnMessage() {
         const localPlayer = players[myId];
         const msgDiv = document.getElementById('respawnMessage');
@@ -740,7 +721,6 @@ function drawGround(camX, camY) {
             if (msgDiv) msgDiv.style.display = 'none';
         }
     }
-
     function gameLoop() {
         updateMoveTargetDirection();
         interpolateAll();
