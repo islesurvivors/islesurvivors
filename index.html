@@ -518,8 +518,8 @@ canvas { display:block; cursor: crosshair; }
                     idleCounter: 0
                 };
             } else {
-                players[id].x += (sp.x - players[id].x) * 0.9;
-                players[id].y += (sp.y - players[id].y) * 0.9;
+                players[id].x += (sp.x - players[id].x) * 0.85;
+                players[id].y += (sp.y - players[id].y) * 0.85;
                 players[id].health = sp.health;
                 players[id].color = sp.color;
                 players[id].alive = sp.alive;
