@@ -5,83 +5,220 @@
 <style>
 body { margin:0; overflow:hidden; background:#111; font-family: 'Segoe UI', Arial, sans-serif; }
 canvas { display:block; cursor: crosshair; }
-#ui { position: fixed; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 8px; font-size: 14px; pointer-events: none; z-index: 10; }
-#ping { position: fixed; top: 10px; right: 10px; color: white; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 8px; font-size: 12px; pointer-events: none; z-index: 10; }
-#health { position: fixed; bottom: 20px; left: 20px; width: 200px; height: 20px; background: rgba(0,0,0,0.7); border-radius: 10px; overflow: hidden; border: 1px solid #fff; z-index: 10; }
-#healthBar { width: 100%; height: 100%; background: #ff3333; transition: width 0.2s; }
-#healthText { position: absolute; width: 100%; text-align: center; line-height: 20px; color: white; font-weight: bold; font-size: 12px; text-shadow: 1px 1px 0 black; }
-#controlsInfo { position: fixed; bottom: 10px; right: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 12px; pointer-events: none; }
-#animSpeedControl { position: fixed; bottom: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 8px; color: white; font-size: 12px; z-index: 20; display: flex; gap: 10px; align-items: center; pointer-events: auto; }
-#animSpeedControl input { width: 200px; cursor: pointer; }
-#animSpeedValue { min-width: 55px; text-align: center; }
-#debugAnim { position: fixed; bottom: 80px; left: 20px; background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 8px; color: #ffaa44; font-family: monospace; font-size: 14px; pointer-events: none; z-index: 20; }
-.damageNumber { position: absolute; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0 black; animation: floatUp 0.8s forwards; pointer-events: none; z-index: 20; }
-@keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
-#respawnMessage { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); color: white; padding: 24px 48px; border-radius: 24px; text-align: center; z-index: 100; display: none; font-family: 'Segoe UI', system-ui, monospace; letter-spacing: 1px; box-shadow: 0 0 20px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); }
-#respawnText { font-size: 20px; font-weight: 400; margin-bottom: 12px; opacity: 0.9; }
-#respawnCountdown { font-size: 64px; font-weight: 700; line-height: 1; text-shadow: 0 0 10px rgba(255,255,255,0.6); color: #ffaa44; }
+
+#ui {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    color: white;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+#ping {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    color: white;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+#health {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    width: 200px;
+    height: 20px;
+    background: rgba(0,0,0,0.7);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #fff;
+    z-index: 10;
+}
+
+#healthBar {
+    width: 100%;
+    height: 100%;
+    background: #ff3333;
+    transition: width 0.2s;
+}
+
+#healthText {
+    position: absolute;
+    width: 100%;
+    text-align: center;
+    line-height: 20px;
+    color: white;
+    font-weight: bold;
+    font-size: 12px;
+    text-shadow: 1px 1px 0 black;
+}
+
+#controlsInfo {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    color: white;
+    background: rgba(0,0,0,0.5);
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    pointer-events: none;
+}
+
+#animSpeedControl {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0,0,0,0.7);
+    padding: 8px 12px;
+    border-radius: 8px;
+    color: white;
+    font-size: 12px;
+    z-index: 20;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    pointer-events: auto;
+}
+#animSpeedControl input {
+    width: 200px;
+    cursor: pointer;
+}
+#animSpeedValue {
+    min-width: 55px;
+    text-align: center;
+}
+
+#debugAnim {
+    position: fixed;
+    bottom: 80px;
+    left: 20px;
+    background: rgba(0,0,0,0.7);
+    padding: 4px 10px;
+    border-radius: 8px;
+    color: #ffaa44;
+    font-family: monospace;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.damageNumber {
+    position: absolute;
+    font-weight: bold;
+    font-size: 18px;
+    text-shadow: 1px 1px 0 black;
+    animation: floatUp 0.8s forwards;
+    pointer-events: none;
+    z-index: 20;
+}
+
+@keyframes floatUp {
+    0% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-40px); }
+}
+
+#respawnMessage {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    color: white;
+    padding: 24px 48px;
+    border-radius: 24px;
+    text-align: center;
+    z-index: 100;
+    display: none;
+    font-family: 'Segoe UI', system-ui, monospace;
+    letter-spacing: 1px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+#respawnText {
+    font-size: 20px;
+    font-weight: 400;
+    margin-bottom: 12px;
+    opacity: 0.9;
+}
+
+#respawnCountdown {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: 0 0 10px rgba(255,255,255,0.6);
+    color: #ffaa44;
+}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="ui"><div>🏆 Jugadores vivos: <span id="aliveCount">0</span></div></div>
-<div id="ping">📡 Ping: <span id="pingValue">0</span> ms</div>
-<div id="health"><div id="healthBar"></div><div id="healthText">100 HP</div></div>
-<div id="controlsInfo">🖱️ WASD o arrastrar | 💥 Colisión = combate automático | ✨ Click en el mapa para moverte</div>
-<div id="animSpeedControl"><span>🎬 Duración por frame:</span><input type="range" id="animSpeedSlider" min="0.08" max="2.0" step="0.01" value="0.25"><span id="animSpeedValue">0.25 s</span></div>
-<div id="debugAnim">Frame actual: <span id="currentFrame">1</span> | Próximo cambio en <span id="timeToNext">0.00</span> s</div>
-<div id="respawnMessage"><div id="respawnText">Reapareciendo en</div><div id="respawnCountdown">5</div></div>
+<div id="ui">
+    <div>🏆 Jugadores vivos: <span id="aliveCount">0</span></div>
+</div>
+<div id="ping">
+    📡 Ping: <span id="pingValue">0</span> ms
+</div>
+<div id="health">
+    <div id="healthBar"></div>
+    <div id="healthText">100 HP</div>
+</div>
+<div id="controlsInfo">
+    🖱️ WASD o arrastrar | 💥 Colisión = combate automático | ✨ Click en el mapa para moverte
+</div>
+<div id="animSpeedControl">
+    <span>🎬 Duración por frame:</span>
+    <input type="range" id="animSpeedSlider" min="0.08" max="2.0" step="0.01" value="0.25">
+    <span id="animSpeedValue">0.25 s</span>
+</div>
+<div id="debugAnim">
+    Frame actual: <span id="currentFrame">1</span> | Próximo cambio en <span id="timeToNext">0.00</span> s
+</div>
+<div id="respawnMessage">
+    <div id="respawnText">Reapareciendo en</div>
+    <div id="respawnCountdown">5</div>
+</div>
 
 <script>
 (function() {
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
+
     const WORLD_SIZE = 4000;
+
     let myId = null;
     let players = {};
-    let snapshots = [];
-    const INTERPOLATION_DELAY = 120;
+    let serverPlayers = {};
     let aliveCount = 0;
     let localPlayerHealth = 100;
     let lastAttackTime = 0;
     let attackCooldown = 0.8;
 
-    const keyState = { w: false, s: false, a: false, d: false };
+    const keyState = {
+        w: false,
+        s: false,
+        a: false,
+        d: false
+    };
+
     let input = { dx: 0, dy: 0 };
+
     let moveTarget = null;
     const STOP_DISTANCE = 12.0;
     let recentTouch = false;
     let isClickMoving = false;
-    let isTouchInput = false;
-
-    let deathTime = null;
-    let pingHistory = [];
-    const PING_HISTORY_LEN = 5;
-
-    const SPRITE_URL = "ch003.png";
-    const TOTAL_IMAGE_SIZE = 128;
-    const TILES_PER_ROW = 4;
-    const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW;
-    const SPRITE_SCALE = 36 / TILE_SIZE;
-    const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
-    const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
-    const CROP_LEFT = 0;
-    const CROP_TOP = 0;
-    const CROP_WIDTH = TILE_SIZE - CROP_LEFT;
-    const CROP_HEIGHT = TILE_SIZE - CROP_TOP;
-
-    let spriteSheet = new Image();
-    let spriteLoaded = false;
-    spriteSheet.onload = () => { spriteLoaded = true; };
-    spriteSheet.src = SPRITE_URL;
-
-    const DIRECTION_TO_ROW = { down: 0, up: 1, left: 2, right: 3 };
-    let animInterval = 0.25;
-    let playerAnim = {};
-    let time = 0;
-
-    const currentFrameSpan = document.getElementById('currentFrame');
-    const timeToNextSpan = document.getElementById('timeToNext');
 
     function clearMoveTarget() {
         moveTarget = null;
@@ -91,7 +228,10 @@ canvas { display:block; cursor: crosshair; }
     function setMoveTarget(worldX, worldY) {
         if (!players[myId] || !players[myId].alive) return;
         moveTarget = { x: worldX, y: worldY };
-        keyState.w = keyState.s = keyState.a = keyState.d = false;
+        keyState.w = false;
+        keyState.s = false;
+        keyState.a = false;
+        keyState.d = false;
         isTouchInput = false;
         isClickMoving = true;
     }
@@ -101,15 +241,20 @@ canvas { display:block; cursor: crosshair; }
             if (moveTarget) clearMoveTarget();
             return;
         }
+
         if (keyState.w || keyState.s || keyState.a || keyState.d || isTouchInput) {
             if (moveTarget) clearMoveTarget();
             return;
         }
+
         if (!moveTarget) {
-            input.dx = 0;
-            input.dy = 0;
+            if (input.dx !== 0 || input.dy !== 0) {
+                input.dx = 0;
+                input.dy = 0;
+            }
             return;
         }
+
         const local = players[myId];
         const dxTarget = moveTarget.x - local.x;
         const dyTarget = moveTarget.y - local.y;
@@ -123,19 +268,17 @@ canvas { display:block; cursor: crosshair; }
         }
 
         const mag = distance;
-        input.dx = dxTarget / mag;
-        input.dy = dyTarget / mag;
+        const normX = dxTarget / mag;
+        const normY = dyTarget / mag;
+        input.dx = normX;
+        input.dy = normY;
     }
 
     function screenToWorld(clientX, clientY) {
         const localPlayer = players[myId];
         if (!localPlayer) return { x: 0, y: 0 };
-
-        let camX = localPlayer.x - canvas.width / 2;
-        let camY = localPlayer.y - canvas.height / 2;
-        camX = Math.max(0, Math.min(camX, WORLD_SIZE - canvas.width));
-        camY = Math.max(0, Math.min(camY, WORLD_SIZE - canvas.height));
-
+        const camX = Math.max(0, Math.min(localPlayer.x - canvas.width / 2, Math.max(0, WORLD_SIZE - canvas.width)));
+        const camY = Math.max(0, Math.min(localPlayer.y - canvas.height / 2, Math.max(0, WORLD_SIZE - canvas.height)));
         const worldX = clientX + camX;
         const worldY = clientY + camY;
         return { x: worldX, y: worldY };
@@ -147,15 +290,14 @@ canvas { display:block; cursor: crosshair; }
             return;
         }
         e.preventDefault();
-        if (!myId || !players[myId] || !players[myId].alive) return;
+        if (!myId) return;
+        if (!players[myId] || !players[myId].alive) return;
 
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
-
         let clickCanvasX = (e.clientX - rect.left) * scaleX;
         let clickCanvasY = (e.clientY - rect.top) * scaleY;
-
         clickCanvasX = Math.min(Math.max(0, clickCanvasX), canvas.width);
         clickCanvasY = Math.min(Math.max(0, clickCanvasY), canvas.height);
 
@@ -181,32 +323,79 @@ canvas { display:block; cursor: crosshair; }
     }
 
     function handleKeyDown(e) {
+        const key = e.key;
         let changed = false;
-        if (e.key === 'w') { keyState.w = true; changed = true; }
-        else if (e.key === 's') { keyState.s = true; changed = true; }
-        else if (e.key === 'a') { keyState.a = true; changed = true; }
-        else if (e.key === 'd') { keyState.d = true; changed = true; }
-
+        if (key === 'w') { keyState.w = true; changed = true; e.preventDefault(); }
+        else if (key === 's') { keyState.s = true; changed = true; e.preventDefault(); }
+        else if (key === 'a') { keyState.a = true; changed = true; e.preventDefault(); }
+        else if (key === 'd') { keyState.d = true; changed = true; e.preventDefault(); }
         if (changed) {
             updateInputFromKeys();
             isTouchInput = false;
             if (moveTarget) clearMoveTarget();
-            e.preventDefault();
         }
     }
 
     function handleKeyUp(e) {
+        const key = e.key;
         let changed = false;
-        if (e.key === 'w') { keyState.w = false; changed = true; }
-        else if (e.key === 's') { keyState.s = false; changed = true; }
-        else if (e.key === 'a') { keyState.a = false; changed = true; }
-        else if (e.key === 'd') { keyState.d = false; changed = true; }
-
+        if (key === 'w') { keyState.w = false; changed = true; e.preventDefault(); }
+        else if (key === 's') { keyState.s = false; changed = true; e.preventDefault(); }
+        else if (key === 'a') { keyState.a = false; changed = true; e.preventDefault(); }
+        else if (key === 'd') { keyState.d = false; changed = true; e.preventDefault(); }
         if (changed) updateInputFromKeys();
     }
 
+    document.removeEventListener("keydown", window._oldKeyDown);
+    document.removeEventListener("keyup", window._oldKeyUp);
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
+    window._oldKeyDown = handleKeyDown;
+    window._oldKeyUp = handleKeyUp;
+
+    let deathTime = null;
+    let pingHistory = [];
+    const PING_HISTORY_LEN = 5;
+
+    const SPRITE_URL = "ch003.png";
+    const TOTAL_IMAGE_SIZE = 128;
+    const TILES_PER_ROW = 4;
+    const TILE_SIZE = TOTAL_IMAGE_SIZE / TILES_PER_ROW;
+    const SPRITE_SCALE = 36 / TILE_SIZE;
+    const SPRITE_W = TILE_SIZE * SPRITE_SCALE;
+    const SPRITE_H = TILE_SIZE * SPRITE_SCALE;
+    const CROP_LEFT = 0;
+    const CROP_TOP = 0;
+    const CROP_WIDTH = TILE_SIZE - CROP_LEFT;
+    const CROP_HEIGHT = TILE_SIZE - CROP_TOP;
+
+    let spriteSheet = new Image();
+    let spriteLoaded = false;
+    spriteSheet.onload = () => { spriteLoaded = true; };
+    spriteSheet.src = SPRITE_URL;
+
+    const DIRECTION_TO_ROW = {
+        down: 0,
+        up: 1,
+        left: 2,
+        right: 3
+    };
+
+    let animInterval = 0.25;
+    const slider = document.getElementById('animSpeedSlider');
+    const speedValue = document.getElementById('animSpeedValue');
+    if (slider && speedValue) {
+        slider.addEventListener('input', (e) => {
+            animInterval = parseFloat(e.target.value);
+            speedValue.innerText = animInterval.toFixed(2) + ' s';
+        });
+    }
+
+    let playerAnim = {};
+    const currentFrameSpan = document.getElementById('currentFrame');
+    const timeToNextSpan = document.getElementById('timeToNext');
+
+    let isTouchInput = false;
 
     function getPlayerColor(id, isMe, serverColor) {
         if (isMe) return "#88ff88";
@@ -233,48 +422,51 @@ canvas { display:block; cursor: crosshair; }
         const data = JSON.parse(msg.data);
         if (data.type === 'init') {
             myId = data.id;
-        } else if (data.type === 'state') {
-            snapshots.push({ time: data.timestamp, players: data.players });
-            if (snapshots.length > 20) snapshots.shift();
-
-            aliveCount = Object.keys(data.players).filter(id => data.players[id].alive).length;
-
-            if (myId && data.players[myId]) {
-                localPlayerHealth = data.players[myId].health;
+        }
+        else if (data.type === 'state') {
+            serverPlayers = data.players;
+            aliveCount = data.aliveCount;
+            if (myId && serverPlayers[myId]) {
+                localPlayerHealth = serverPlayers[myId].health;
                 const percent = Math.max(0, (localPlayerHealth / 100) * 100);
-                document.getElementById('healthBar').style.width = percent + '%';
-                document.getElementById('healthText').innerText = `${Math.floor(localPlayerHealth)} HP`;
-                lastAttackTime = data.players[myId].lastAttackTime || lastAttackTime;
+                const healthBar = document.getElementById('healthBar');
+                const healthText = document.getElementById('healthText');
+                if (healthBar) healthBar.style.width = percent + '%';
+                if (healthText) healthText.innerText = `${Math.floor(localPlayerHealth)} HP`;
+                lastAttackTime = serverPlayers[myId].lastAttackTime;
             }
-
-            document.getElementById('aliveCount').innerText = aliveCount;
-
+            const aliveCountSpan = document.getElementById('aliveCount');
+            if (aliveCountSpan) aliveCountSpan.innerText = aliveCount;
             if (data.timestamp) {
                 let rawPing = Date.now() - data.timestamp;
                 if (rawPing < 0) rawPing = 0;
                 pingHistory.push(rawPing);
                 if (pingHistory.length > PING_HISTORY_LEN) pingHistory.shift();
                 const avgPing = Math.round(pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length);
-                document.getElementById('pingValue').innerText = avgPing;
+                const pingSpan = document.getElementById('pingValue');
+                if (pingSpan) pingSpan.innerText = avgPing;
             }
-        } else if (data.type === 'damage') {
-            if (data.target === myId) showDamageNumber(data.damage, true);
-            else if (data.from === myId) showDamageNumber(data.damage, false, data.target);
+        }
+        else if (data.type === 'damage') {
+            if (data.target === myId) {
+                showDamageNumber(data.damage, true);
+            } else if (data.from === myId) {
+                showDamageNumber(data.damage, false, data.target);
+            }
         }
     };
 
-    function showDamageNumber(damage, isMe) {
+    function showDamageNumber(damage, isMe, targetId) {
         const div = document.createElement('div');
         div.className = 'damageNumber';
         div.textContent = `-${damage}`;
         div.style.color = isMe ? '#ff8888' : '#ffaa44';
-        div.style.left = (isMe ? canvas.width/2 : canvas.width/2 + (Math.random()-0.5)*100) + 'px';
-        div.style.top = (isMe ? canvas.height/2 : canvas.height/2 + (Math.random()-0.5)*80) + 'px';
+        div.style.left = (isMe ? canvas.width/2 : canvas.width/2 + (Math.random() - 0.5) * 100) + 'px';
+        div.style.top = (isMe ? canvas.height/2 : canvas.height/2 + (Math.random() - 0.5) * 80) + 'px';
         document.body.appendChild(div);
         setTimeout(() => div.remove(), 800);
     }
 
-    // Touch controls
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
@@ -283,7 +475,6 @@ canvas { display:block; cursor: crosshair; }
         isTouchInput = true;
         if (moveTarget) clearMoveTarget();
     });
-
     canvas.addEventListener("touchmove", (e) => {
         e.preventDefault();
         let dx = e.touches[0].clientX - startX;
@@ -295,8 +486,8 @@ canvas { display:block; cursor: crosshair; }
         isTouchInput = true;
         if (moveTarget) clearMoveTarget();
     });
-
-    canvas.addEventListener("touchend", () => {
+    canvas.addEventListener("touchend", (e) => {
+        e.preventDefault();
         input.dx = 0;
         input.dy = 0;
         keyState.w = keyState.s = keyState.a = keyState.d = false;
@@ -313,76 +504,44 @@ canvas { display:block; cursor: crosshair; }
     }, 30);
 
     function interpolateAll() {
-        const now = Date.now();
-        const renderTime = now - INTERPOLATION_DELAY;
-
-        if (snapshots.length < 2) {
-            if (snapshots.length === 1) {
-                const sp = snapshots[0].players;
-                for (let id in sp) {
-                    if (!players[id]) {
-                        players[id] = {...sp[id]};
-                        playerAnim[id] = { frame: 1, directionRow: 0, moving: false, lastVisualX: sp[id].x, lastVisualY: sp[id].y, nextFrameTime: performance.now()/1000 + animInterval, idleCounter: 0 };
-                    } else {
-                        players[id].x = sp[id].x;
-                        players[id].y = sp[id].y;
-                        players[id].health = sp[id].health;
-                        players[id].alive = sp[id].alive;
-                        if (sp[id].color) players[id].color = sp[id].color;
-                    }
-                }
-            }
-            return;
-        }
-
-        let older = snapshots[snapshots.length-2];
-        let newer = snapshots[snapshots.length-1];
-
-        for (let i = 0; i < snapshots.length-1; i++) {
-            if (snapshots[i].time <= renderTime && snapshots[i+1].time >= renderTime) {
-                older = snapshots[i];
-                newer = snapshots[i+1];
-                break;
-            }
-        }
-
-        const t0 = older.time;
-        const t1 = newer.time;
-        let factor = (t1 !== t0) ? Math.max(0, Math.min(1, (renderTime - t0) / (t1 - t0))) : 0;
-
-        const sp0 = older.players;
-        const sp1 = newer.players;
-
-        for (let id in sp1) {
-            const p0 = sp0[id] || sp1[id];
-            const p1 = sp1[id];
+        for (let id in serverPlayers) {
+            const sp = serverPlayers[id];
             if (!players[id]) {
-                players[id] = {...p1};
-                playerAnim[id] = { frame: 1, directionRow: 0, moving: false, lastVisualX: p1.x, lastVisualY: p1.y, nextFrameTime: performance.now()/1000 + animInterval, idleCounter: 0 };
+                players[id] = { ...sp };
+                playerAnim[id] = {
+                    frame: 1,
+                    directionRow: 0,
+                    moving: false,
+                    lastVisualX: sp.x,
+                    lastVisualY: sp.y,
+                    nextFrameTime: performance.now() / 1000 + animInterval,
+                    idleCounter: 0
+                };
             } else {
-                players[id].x = p0.x + (p1.x - p0.x) * factor;
-                players[id].y = p0.y + (p1.y - p0.y) * factor;
-                players[id].health = p1.health;
-                players[id].alive = p1.alive;
-                if (p1.color) players[id].color = p1.color;
-            }
-        }
-
-        for (let id in players) {
-            if (!sp1[id]) {
-                delete players[id];
-                delete playerAnim[id];
+                players[id].x += (sp.x - players[id].x) * 1;
+                players[id].y += (sp.y - players[id].y) * 1;
+                players[id].health = sp.health;
+                players[id].color = sp.color;
+                players[id].alive = sp.alive;
+                players[id].lastAttackTime = sp.lastAttackTime;
             }
         }
     }
 
     function getDirectionFromMovement(dx, dy) {
         if (isTouchInput || isClickMoving) {
-            if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
-            else if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
+            if (Math.abs(dx) > Math.abs(dy)) {
+                return dx > 0 ? 'right' : 'left';
+            } else if (Math.abs(dy) > 0.01) {
+                return dy > 0 ? 'down' : 'up';
+            }
         } else {
-            if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
-            if (Math.abs(dx) > 0.01) return dx > 0 ? 'right' : 'left';
+            if (Math.abs(dy) > 0.01) {
+                return dy > 0 ? 'down' : 'up';
+            }
+            if (Math.abs(dx) > 0.01) {
+                return dx > 0 ? 'right' : 'left';
+            }
         }
         return null;
     }
@@ -392,6 +551,7 @@ canvas { display:block; cursor: crosshair; }
         for (let id in players) {
             const p = players[id];
             if (!p.alive) continue;
+
             const anim = playerAnim[id];
             if (!anim) continue;
 
@@ -402,7 +562,10 @@ canvas { display:block; cursor: crosshair; }
             anim.lastVisualX = p.x;
             anim.lastVisualY = p.y;
 
-            const isMoving = distance > 0.5;
+            const MOVEMENT_THRESHOLD = 0.5;
+            const DIRECTION_THRESHOLD = 2.0;
+
+            const isMoving = distance > MOVEMENT_THRESHOLD;
 
             if (isMoving) {
                 anim.idleCounter = 0;
@@ -411,21 +574,26 @@ canvas { display:block; cursor: crosshair; }
                     anim.frame = 0;
                     anim.nextFrameTime = now + animInterval;
                 }
-            } else if (anim.moving) {
-                anim.idleCounter++;
-                if (anim.idleCounter >= 3) {
-                    anim.moving = false;
-                    anim.frame = 1;
+            } else {
+                if (anim.moving) {
+                    anim.idleCounter++;
+                    if (anim.idleCounter >= 3) {
+                        anim.moving = false;
+                        anim.frame = 1;
+                    }
                 }
             }
 
-            if (distance > 2.0) {
+            if (distance > DIRECTION_THRESHOLD) {
                 const direction = getDirectionFromMovement(deltaX, deltaY);
                 if (direction) {
                     const newRow = DIRECTION_TO_ROW[direction];
                     if (anim.directionRow !== newRow) {
                         anim.directionRow = newRow;
-                        if (anim.moving) anim.frame = 0;
+                        if (anim.moving) {
+                            anim.frame = 0;
+                            anim.nextFrameTime = now + animInterval;
+                        }
                     }
                 }
             }
@@ -437,63 +605,46 @@ canvas { display:block; cursor: crosshair; }
 
             if (id === myId) {
                 if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
-                if (timeToNextSpan) timeToNextSpan.innerText = Math.max(0, anim.nextFrameTime - now).toFixed(2);
+                if (timeToNextSpan) {
+                    const timeLeft = Math.max(0, anim.nextFrameTime - now);
+                    timeToNextSpan.innerText = timeLeft.toFixed(2);
+                }
             }
         }
     }
+function drawGround(camX, camY) {
+    // Agua
+    ctx.fillStyle = "#1e78a8";
+    ctx.fillRect(camX, camY, canvas.width, canvas.height);
 
-    function drawGround(camX, camY) {
-        const now = Date.now() / 1000;
-        time = now;
+    const gridSpacing = 80;
+    const startX = Math.floor(camX / gridSpacing) * gridSpacing;
+    const startY = Math.floor(camY / gridSpacing) * gridSpacing;
 
-        ctx.fillStyle = "#1e78a8";
-        ctx.fillRect(camX, camY, canvas.width, canvas.height);
-
-        // Ondas en el agua
-        ctx.strokeStyle = "rgba(255,255,255,0.12)";
-        ctx.lineWidth = 2;
-        const gridSpacing = 70;
-        for (let x = Math.floor(camX / gridSpacing) * gridSpacing; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
-            for (let y = Math.floor(camY / gridSpacing) * gridSpacing; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
-                const offset = Math.sin(time * 1.8 + x * 0.02 + y * 0.015) * 6;
-                ctx.beginPath();
-                ctx.moveTo(x - 25, y + offset);
-                ctx.quadraticCurveTo(x, y + offset + 8, x + 25, y + offset);
-                ctx.stroke();
-            }
-        }
-
-        // Destellos en el agua
-        ctx.fillStyle = "rgba(255,255,255,0.25)";
-        for (let i = 0; i < 18; i++) {
-            const bx = camX + ((i * 137 + time * 40) % (canvas.width + 300)) - 50;
-            const by = camY + ((i * 83 + Math.sin(time + i) * 30) % (canvas.height + 200));
-            ctx.fillRect(bx, by, 3, 1);
-        }
-
-        // Isla segura
-        const SAFE_ZONE_SIZE = 1260;
-        const centerX = 4000 / 2;
-        const centerY = 4000 / 2;
-        const islandX = centerX - SAFE_ZONE_SIZE / 2;
-        const islandY = centerY - SAFE_ZONE_SIZE / 2;
-
-        ctx.fillStyle = "#d9bf73";
-        ctx.fillRect(islandX, islandY, SAFE_ZONE_SIZE, SAFE_ZONE_SIZE);
-
-        ctx.strokeStyle = "rgba(139, 115, 50, 0.4)";
-        ctx.lineWidth = 3;
-        for (let i = 0; i < SAFE_ZONE_SIZE; i += 45) {
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    for (let x = startX; x < camX + canvas.width + gridSpacing; x += gridSpacing) {
+        for (let y = startY; y < camY + canvas.height + gridSpacing; y += gridSpacing) {
             ctx.beginPath();
-            ctx.moveTo(islandX + i, islandY);
-            ctx.lineTo(islandX + i, islandY + SAFE_ZONE_SIZE);
-            ctx.stroke();
+            ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+            ctx.fill();
         }
+    
 
-        ctx.strokeStyle = "rgba(255,255,255,0.35)";
-        ctx.lineWidth = 6;
-        ctx.strokeRect(islandX + 3, islandY + 3, SAFE_ZONE_SIZE - 6, SAFE_ZONE_SIZE - 6);
-    }
+    // Isla segura
+    const SAFE_ZONE_SIZE = 260;
+    const centerX = 4000 / 2;
+    const centerY = 4000 / 2;
+
+    const islandX = centerX - SAFE_ZONE_SIZE / 2;
+    const islandY = centerY - SAFE_ZONE_SIZE / 2;
+
+    ctx.fillStyle = "#d9bf73";
+    ctx.fillRect(islandX, islandY, SAFE_ZONE_SIZE, SAFE_ZONE_SIZE);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(islandX + 2, islandY + 2, SAFE_ZONE_SIZE - 4, SAFE_ZONE_SIZE - 4);
+}}
 
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -502,8 +653,8 @@ canvas { display:block; cursor: crosshair; }
 
         let camX = localPlayer.x - canvas.width / 2;
         let camY = localPlayer.y - canvas.height / 2;
-        camX = Math.max(0, Math.min(camX, WORLD_SIZE - canvas.width));
-        camY = Math.max(0, Math.min(camY, WORLD_SIZE - canvas.height));
+        camX = Math.max(0, Math.min(camX, Math.max(0, WORLD_SIZE - canvas.width)));
+        camY = Math.max(0, Math.min(camY, Math.max(0, WORLD_SIZE - canvas.height)));
 
         ctx.save();
         ctx.translate(-camX, -camY);
@@ -511,9 +662,12 @@ canvas { display:block; cursor: crosshair; }
 
         const barWidth = 32;
         const barHeight = 6;
+
         const playerList = [];
         for (let id in players) {
-            if (players[id].alive) playerList.push({ id, p: players[id] });
+            if (players[id].alive) {
+                playerList.push({ id, p: players[id] });
+            }
         }
         playerList.sort((a, b) => a.p.y - b.p.y);
 
@@ -526,7 +680,11 @@ canvas { display:block; cursor: crosshair; }
             if (spriteLoaded) {
                 const srcX = frameCol * TILE_SIZE + CROP_LEFT;
                 const srcY = row * TILE_SIZE + CROP_TOP;
-                ctx.drawImage(spriteSheet, srcX, srcY, CROP_WIDTH, CROP_HEIGHT, p.x - SPRITE_W/2, p.y - SPRITE_H/2, SPRITE_W, SPRITE_H);
+                const srcW = CROP_WIDTH;
+                const srcH = CROP_HEIGHT;
+                const destX = p.x - SPRITE_W/2;
+                const destY = p.y - SPRITE_H/2;
+                ctx.drawImage(spriteSheet, srcX, srcY, srcW, srcH, destX, destY, SPRITE_W, SPRITE_H);
             } else {
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, SPRITE_W/2, 0, Math.PI * 2);
@@ -549,6 +707,18 @@ canvas { display:block; cursor: crosshair; }
             ctx.fillStyle = "white";
             ctx.shadowBlur = 2;
             ctx.fillText(isMe ? "Tú" : `P${id.substring(0,4)}`, p.x - 12, p.y - SPRITE_H/2 - 14);
+
+            if (isMe && lastAttackTime) {
+                const now = Date.now() / 1000;
+                const cooldownRemaining = Math.max(0, attackCooldown - (now - lastAttackTime));
+                if (cooldownRemaining > 0) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, SPRITE_W/2 + 2, 0, Math.PI * 2 * (1 - cooldownRemaining / attackCooldown));
+                    ctx.strokeStyle = "#ffaa44";
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+            }
         }
         ctx.restore();
     }
@@ -558,17 +728,16 @@ canvas { display:block; cursor: crosshair; }
         const msgDiv = document.getElementById('respawnMessage');
         const countdownSpan = document.getElementById('respawnCountdown');
         if (!localPlayer) return;
-
         if (!localPlayer.alive) {
             if (deathTime === null) deathTime = Date.now();
             const elapsed = (Date.now() - deathTime) / 1000;
             let remaining = Math.max(0, Math.ceil(5 - elapsed));
-            countdownSpan.innerText = remaining;
-            msgDiv.style.display = 'block';
+            if (countdownSpan) countdownSpan.innerText = remaining;
+            if (msgDiv) msgDiv.style.display = 'block';
             if (moveTarget) clearMoveTarget();
         } else {
-            deathTime = null;
-            msgDiv.style.display = 'none';
+            if (deathTime !== null) deathTime = null;
+            if (msgDiv) msgDiv.style.display = 'none';
         }
     }
 
@@ -580,7 +749,6 @@ canvas { display:block; cursor: crosshair; }
         updateRespawnMessage();
         requestAnimationFrame(gameLoop);
     }
-
     gameLoop();
 })();
 </script>
