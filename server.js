@@ -15,7 +15,7 @@ const KNOCKBACK_FORCE = 120;
 const KNOCKBACK_DECAY = 0.85;
 const SAFE_ZONE_CENTER_X = WORLD_SIZE / 2;
 const SAFE_ZONE_CENTER_Y = WORLD_SIZE / 2;
-const SAFE_ZONE_SIZE = 260;
+const SAFE_ZONE_SIZE = 1260;
 const SAFE_HALF = SAFE_ZONE_SIZE / 2;
 function isInsideSafeZone(x, y) {
     return (
