@@ -12,11 +12,17 @@ const wss = new WebSocket.Server({ server });
 
 const WORLD_SIZE = 4000;
 const PLAYER_RADIUS = 8;
+
+// combate
 const ATTACK_COOLDOWN = 0.8;
 const ATTACK_DAMAGE_MIN = 10;
 const ATTACK_DAMAGE_MAX = 20;
 
-// ===== ZONA SEGURA =====
+// knockback
+const KNOCKBACK_FORCE = 120;
+const KNOCKBACK_DECAY = 0.85;
+
+// zona segura
 const SAFE_ZONE_CENTER_X = WORLD_SIZE / 2;
 const SAFE_ZONE_CENTER_Y = WORLD_SIZE / 2;
 const SAFE_ZONE_SIZE = 260;
@@ -41,8 +47,8 @@ function killByWater(p) {
     if (!p.alive) return false;
     p.health = 0;
     p.alive = false;
-    p.dx = 0;
-    p.dy = 0;
+    p.vx = 0;
+    p.vy = 0;
     p.respawnTime = Date.now() + 5000;
     return true;
 }
@@ -55,7 +61,6 @@ function handleWaterDeaths() {
         }
     }
 }
-// =======================
 
 let players = {};
 
@@ -70,9 +75,14 @@ class Player {
 
         this.health = 100;
         this.lastAttackTime = 0;
+
         this.dx = 0;
         this.dy = 0;
         this.speed = 200;
+
+        this.vx = 0;
+        this.vy = 0;
+
         this.alive = true;
         this.color = this.generateColor(id);
         this.respawnTime = null;
@@ -133,6 +143,7 @@ function resolveCombat(p1, p2, now) {
     }
 
     const result = { firstHit: null, secondHit: null };
+
     const { damage, killed } = first.attack(second, now);
     result.firstHit = { attacker: first.id, target: second.id, damage, killed };
 
@@ -140,6 +151,7 @@ function resolveCombat(p1, p2, now) {
         const { damage: d2, killed: k2 } = second.attack(first, now);
         result.secondHit = { attacker: second.id, target: first.id, damage: d2, killed: k2 };
     }
+
     return result;
 }
 
@@ -147,8 +159,16 @@ function updateMovement(deltaTime) {
     for (let id in players) {
         const p = players[id];
         if (!p.alive) continue;
-        p.x += p.dx * p.speed * deltaTime;
-        p.y += p.dy * p.speed * deltaTime;
+
+        const moveX = p.dx * p.speed;
+        const moveY = p.dy * p.speed;
+
+        p.x += (moveX + p.vx) * deltaTime;
+        p.y += (moveY + p.vy) * deltaTime;
+
+        p.vx *= KNOCKBACK_DECAY;
+        p.vy *= KNOCKBACK_DECAY;
+
         p.x = Math.min(Math.max(p.x, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
         p.y = Math.min(Math.max(p.y, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
     }
@@ -156,25 +176,42 @@ function updateMovement(deltaTime) {
 
 function handleCollisionsAndCombat(now) {
     const ids = Object.keys(players);
+
     for (let i = 0; i < ids.length; i++) {
         const p1 = players[ids[i]];
         if (!p1.alive) continue;
+
         for (let j = i + 1; j < ids.length; j++) {
             const p2 = players[ids[j]];
             if (!p2.alive) continue;
+
             const dx = p1.x - p2.x;
             const dy = p1.y - p2.y;
             const dist = Math.hypot(dx, dy);
             const minDist = PLAYER_RADIUS * 2;
+
             if (dist < minDist) {
                 const angle = Math.atan2(dy, dx);
+
+                const nx = Math.cos(angle);
+                const ny = Math.sin(angle);
+
                 const overlap = minDist - dist;
-                const moveX = Math.cos(angle) * overlap / 2;
-                const moveY = Math.sin(angle) * overlap / 2;
-                p1.x = Math.min(Math.max(p1.x + moveX, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-                p1.y = Math.min(Math.max(p1.y + moveY, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-                p2.x = Math.min(Math.max(p2.x - moveX, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
-                p2.y = Math.min(Math.max(p2.y - moveY, PLAYER_RADIUS), WORLD_SIZE - PLAYER_RADIUS);
+
+                const pushX = nx * overlap / 2;
+                const pushY = ny * overlap / 2;
+
+                p1.x += pushX;
+                p1.y += pushY;
+                p2.x -= pushX;
+                p2.y -= pushY;
+
+                // 💥 knockback
+                p1.vx += nx * KNOCKBACK_FORCE;
+                p1.vy += ny * KNOCKBACK_FORCE;
+
+                p2.vx -= nx * KNOCKBACK_FORCE;
+                p2.vy -= ny * KNOCKBACK_FORCE;
 
                 const combat = resolveCombat(p1, p2, now);
                 if (combat) {
@@ -189,24 +226,28 @@ function handleCollisionsAndCombat(now) {
 function sendDamageEvent(hit) {
     const attacker = players[hit.attacker];
     const target = players[hit.target];
+
     if (attacker && attacker.ws.readyState === WebSocket.OPEN) {
-        attacker.ws.send(JSON.stringify({ type: 'damage', damage: hit.damage, target: hit.target, killed: hit.killed }));
+        attacker.ws.send(JSON.stringify({ type: 'damage', damage: hit.damage }));
     }
     if (target && target.ws.readyState === WebSocket.OPEN) {
-        target.ws.send(JSON.stringify({ type: 'damage', damage: hit.damage, from: hit.attacker, killed: hit.killed }));
+        target.ws.send(JSON.stringify({ type: 'damage', damage: hit.damage }));
     }
 }
 
 function processRespawns() {
     const now = Date.now();
+
     for (let id in players) {
         const p = players[id];
+
         if (!p.alive && p.respawnTime && p.respawnTime <= now) {
             p.alive = true;
             p.health = 100;
-            p.lastAttackTime = 0;
             p.dx = 0;
             p.dy = 0;
+            p.vx = 0;
+            p.vy = 0;
 
             const spawn = getSafeSpawnPosition();
             p.x = spawn.x;
@@ -217,34 +258,24 @@ function processRespawns() {
     }
 }
 
-function removeDeadPlayers() {
-    for (let id in players) {
-        if (players[id].ws.readyState !== WebSocket.OPEN) {
-            delete players[id];
-        }
-    }
-}
-
 function broadcastGameState() {
     const state = {
         type: 'state',
-        players: {},
-        aliveCount: Object.values(players).filter(p => p.alive).length,
-        timestamp: Date.now()
+        players: {}
     };
+
     for (let id in players) {
         const p = players[id];
         state.players[id] = {
-            id: p.id,
             x: p.x,
             y: p.y,
             health: p.health,
-            alive: p.alive,
-            lastAttackTime: p.lastAttackTime,
-            color: p.color
+            alive: p.alive
         };
     }
+
     const msg = JSON.stringify(state);
+
     for (let id in players) {
         const p = players[id];
         if (p.ws.readyState === WebSocket.OPEN) {
@@ -253,30 +284,27 @@ function broadcastGameState() {
     }
 }
 
-let lastTimestamp = Date.now() / 1000;
 setInterval(() => {
     const now = Date.now() / 1000;
-    const delta = Math.min(0.033, now - lastTimestamp);
-    lastTimestamp = now;
 
-    updateMovement(delta);
+    updateMovement(1/20);
     handleWaterDeaths();
     handleCollisionsAndCombat(now);
     handleWaterDeaths();
     processRespawns();
-    removeDeadPlayers();
     broadcastGameState();
+
 }, 1000 / 20);
 
 wss.on("connection", (ws) => {
     const id = Math.random().toString(36).substr(2, 9);
-    const player = new Player(id, ws);
-    players[id] = player;
+    players[id] = new Player(id, ws);
 
-    ws.send(JSON.stringify({ type: 'init', id: id }));
+    ws.send(JSON.stringify({ type: "init", id }));
 
     ws.on("message", (msg) => {
         const data = JSON.parse(msg);
+
         if (data.type === "move") {
             const p = players[id];
             if (p && p.alive) {
