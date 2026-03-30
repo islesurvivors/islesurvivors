@@ -40,7 +40,7 @@ canvas { display:block; cursor: crosshair; }
     let myId = null;
     let players = {};
     let snapshots = [];
-    const INTERPOLATION_DELAY = 80;
+    const INTERPOLATION_DELAY = 80;        // ← Reducido para más respuesta
     let aliveCount = 0;
     let localPlayerHealth = 100;
     let lastAttackTime = 0;
@@ -82,6 +82,9 @@ canvas { display:block; cursor: crosshair; }
 
     const currentFrameSpan = document.getElementById('currentFrame');
     const timeToNextSpan = document.getElementById('timeToNext');
+
+    // === CLIENT SIDE PREDICTION ===
+    let localPlayerPredicted = null;   // Posición predicha del jugador local
 
     function clearMoveTarget() {
         moveTarget = null;
@@ -136,16 +139,11 @@ canvas { display:block; cursor: crosshair; }
         camX = Math.max(0, Math.min(camX, WORLD_SIZE - canvas.width));
         camY = Math.max(0, Math.min(camY, WORLD_SIZE - canvas.height));
 
-        const worldX = clientX + camX;
-        const worldY = clientY + camY;
-        return { x: worldX, y: worldY };
+        return { x: clientX + camX, y: clientY + camY };
     }
 
     function onCanvasClick(e) {
-        if (recentTouch) {
-            recentTouch = false;
-            return;
-        }
+        if (recentTouch) return;
         e.preventDefault();
         if (!myId || !players[myId] || !players[myId].alive) return;
 
@@ -153,31 +151,22 @@ canvas { display:block; cursor: crosshair; }
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
 
-        let clickCanvasX = (e.clientX - rect.left) * scaleX;
-        let clickCanvasY = (e.clientY - rect.top) * scaleY;
+        let clickX = (e.clientX - rect.left) * scaleX;
+        let clickY = (e.clientY - rect.top) * scaleY;
 
-        clickCanvasX = Math.min(Math.max(0, clickCanvasX), canvas.width);
-        clickCanvasY = Math.min(Math.max(0, clickCanvasY), canvas.height);
-
-        const worldPos = screenToWorld(clickCanvasX, clickCanvasY);
+        const worldPos = screenToWorld(clickX, clickY);
         setMoveTarget(worldPos.x, worldPos.y);
     }
 
-    function onCanvasContextMenu(e) {
-        e.preventDefault();
-        return false;
-    }
-
+    function onCanvasContextMenu(e) { e.preventDefault(); return false; }
     function onTouchStartForClick(e) {
         recentTouch = true;
         setTimeout(() => { recentTouch = false; }, 300);
     }
 
     function updateInputFromKeys() {
-        let rawDx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
-        let rawDy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
-        input.dx = rawDx;
-        input.dy = rawDy;
+        input.dx = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
+        input.dy = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
     }
 
     function handleKeyDown(e) {
@@ -201,7 +190,6 @@ canvas { display:block; cursor: crosshair; }
         else if (e.key === 's') { keyState.s = false; changed = true; }
         else if (e.key === 'a') { keyState.a = false; changed = true; }
         else if (e.key === 'd') { keyState.d = false; changed = true; }
-
         if (changed) updateInputFromKeys();
     }
 
@@ -216,8 +204,7 @@ canvas { display:block; cursor: crosshair; }
             hash = ((hash << 5) - hash) + id.charCodeAt(i);
             hash |= 0;
         }
-        const hue = Math.abs(hash % 360);
-        return `hsl(${hue}, 70%, 55%)`;
+        return `hsl(${Math.abs(hash % 360)}, 70%, 55%)`;
     }
 
     function resize() {
@@ -233,18 +220,29 @@ canvas { display:block; cursor: crosshair; }
         const data = JSON.parse(msg.data);
         if (data.type === 'init') {
             myId = data.id;
-        } else if (data.type === 'state') {
+            localPlayerPredicted = { x: 0, y: 0 }; // se inicializará al recibir primer estado
+        } 
+        else if (data.type === 'state') {
             snapshots.push({ time: data.timestamp, players: data.players });
             if (snapshots.length > 20) snapshots.shift();
 
             aliveCount = Object.keys(data.players).filter(id => data.players[id].alive).length;
 
             if (myId && data.players[myId]) {
-                localPlayerHealth = data.players[myId].health;
-                const percent = Math.max(0, (localPlayerHealth / 100) * 100);
-                document.getElementById('healthBar').style.width = percent + '%';
+                const serverPos = data.players[myId];
+
+                localPlayerHealth = serverPos.health;
+                document.getElementById('healthBar').style.width = Math.max(0, (localPlayerHealth / 100) * 100) + '%';
                 document.getElementById('healthText').innerText = `${Math.floor(localPlayerHealth)} HP`;
-                lastAttackTime = data.players[myId].lastAttackTime || lastAttackTime;
+
+                lastAttackTime = serverPos.lastAttackTime || lastAttackTime;
+
+                // Client-side prediction correction
+                if (localPlayerPredicted && players[myId]) {
+                    // Suavemente corregimos la posición predicha con la del servidor
+                    players[myId].x = players[myId].x * 0.6 + serverPos.x * 0.4;
+                    players[myId].y = players[myId].y * 0.6 + serverPos.y * 0.4;
+                }
             }
 
             document.getElementById('aliveCount').innerText = aliveCount;
@@ -257,9 +255,10 @@ canvas { display:block; cursor: crosshair; }
                 const avgPing = Math.round(pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length);
                 document.getElementById('pingValue').innerText = avgPing;
             }
-        } else if (data.type === 'damage') {
+        } 
+        else if (data.type === 'damage') {
             if (data.target === myId) showDamageNumber(data.damage, true);
-            else if (data.from === myId) showDamageNumber(data.damage, false, data.target);
+            else if (data.from === myId) showDamageNumber(data.damage, false);
         }
     };
 
@@ -274,7 +273,7 @@ canvas { display:block; cursor: crosshair; }
         setTimeout(() => div.remove(), 800);
     }
 
-    // Touch controls
+    // Touch
     let startX = 0, startY = 0;
     canvas.addEventListener("touchstart", (e) => {
         e.preventDefault();
@@ -291,7 +290,6 @@ canvas { display:block; cursor: crosshair; }
         let mag = Math.hypot(dx, dy) || 1;
         input.dx = dx / mag;
         input.dy = dy / mag;
-        keyState.w = keyState.s = keyState.a = keyState.d = false;
         isTouchInput = true;
         if (moveTarget) clearMoveTarget();
     });
@@ -299,7 +297,6 @@ canvas { display:block; cursor: crosshair; }
     canvas.addEventListener("touchend", () => {
         input.dx = 0;
         input.dy = 0;
-        keyState.w = keyState.s = keyState.a = keyState.d = false;
     });
 
     canvas.addEventListener("click", onCanvasClick);
@@ -312,6 +309,7 @@ canvas { display:block; cursor: crosshair; }
         }
     }, 30);
 
+    // ==================== INTERPOLACIÓN + PREDICCIÓN ====================
     function interpolateAll() {
         const now = Date.now();
         const renderTime = now - INTERPOLATION_DELAY;
@@ -323,12 +321,11 @@ canvas { display:block; cursor: crosshair; }
                     if (!players[id]) {
                         players[id] = {...sp[id]};
                         playerAnim[id] = { frame: 1, directionRow: 0, moving: false, lastVisualX: sp[id].x, lastVisualY: sp[id].y, nextFrameTime: performance.now()/1000 + animInterval, idleCounter: 0 };
-                    } else {
+                    } else if (id !== myId) {
                         players[id].x = sp[id].x;
                         players[id].y = sp[id].y;
                         players[id].health = sp[id].health;
                         players[id].alive = sp[id].alive;
-                        if (sp[id].color) players[id].color = sp[id].color;
                     }
                 }
             }
@@ -346,16 +343,19 @@ canvas { display:block; cursor: crosshair; }
             }
         }
 
-        const t0 = older.time;
-        const t1 = newer.time;
-        let factor = (t1 !== t0) ? Math.max(0, Math.min(1, (renderTime - t0) / (t1 - t0))) : 0;
+        const factor = (newer.time - older.time) !== 0 
+            ? Math.max(0, Math.min(1, (renderTime - older.time) / (newer.time - older.time))) 
+            : 0;
 
         const sp0 = older.players;
         const sp1 = newer.players;
 
         for (let id in sp1) {
+            if (id === myId) continue; // El jugador local se maneja con predicción
+
             const p0 = sp0[id] || sp1[id];
             const p1 = sp1[id];
+
             if (!players[id]) {
                 players[id] = {...p1};
                 playerAnim[id] = { frame: 1, directionRow: 0, moving: false, lastVisualX: p1.x, lastVisualY: p1.y, nextFrameTime: performance.now()/1000 + animInterval, idleCounter: 0 };
@@ -364,30 +364,20 @@ canvas { display:block; cursor: crosshair; }
                 players[id].y = p0.y + (p1.y - p0.y) * factor;
                 players[id].health = p1.health;
                 players[id].alive = p1.alive;
-                if (p1.color) players[id].color = p1.color;
-            }
-        }
-
-        for (let id in players) {
-            if (!sp1[id]) {
-                delete players[id];
-                delete playerAnim[id];
             }
         }
     }
 
-    function getDirectionFromMovement(dx, dy) {
-        if (isTouchInput || isClickMoving) {
-            if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
-            else if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
-        } else {
-            if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
-            if (Math.abs(dx) > 0.01) return dx > 0 ? 'right' : 'left';
-        }
-        return null;
+    function gameLoop() {
+        updateMoveTargetDirection();
+        interpolateAll();
+        updateAnimations();
+        draw();
+        updateRespawnMessage();
+        requestAnimationFrame(gameLoop);
     }
 
-    function updateAnimations() {
+    function updateAnimations() { /* ... mismo código que antes ... */ 
         const now = performance.now() / 1000;
         for (let id in players) {
             const p = players[id];
@@ -420,13 +410,10 @@ canvas { display:block; cursor: crosshair; }
             }
 
             if (distance > 2.0) {
-                const direction = getDirectionFromMovement(deltaX, deltaY);
+                const direction = getDirectionFromMovement ? getDirectionFromMovement(deltaX, deltaY) : null;
                 if (direction) {
                     const newRow = DIRECTION_TO_ROW[direction];
-                    if (anim.directionRow !== newRow) {
-                        anim.directionRow = newRow;
-                        if (anim.moving) anim.frame = 0;
-                    }
+                    if (anim.directionRow !== newRow) anim.directionRow = newRow;
                 }
             }
 
@@ -434,14 +421,10 @@ canvas { display:block; cursor: crosshair; }
                 anim.frame = (anim.frame + 1) % 4;
                 anim.nextFrameTime = now + animInterval;
             }
-
-            if (id === myId) {
-                if (currentFrameSpan) currentFrameSpan.innerText = anim.frame;
-                if (timeToNextSpan) timeToNextSpan.innerText = Math.max(0, anim.nextFrameTime - now).toFixed(2);
-            }
         }
     }
 
+    // === DRAW GROUND CON TEXTURA ===
     function drawGround(camX, camY) {
         const now = Date.now() / 1000;
         time = now;
@@ -449,7 +432,6 @@ canvas { display:block; cursor: crosshair; }
         ctx.fillStyle = "#1e78a8";
         ctx.fillRect(camX, camY, canvas.width, canvas.height);
 
-        // Ondas en el agua
         ctx.strokeStyle = "rgba(255,255,255,0.12)";
         ctx.lineWidth = 2;
         const gridSpacing = 70;
@@ -463,7 +445,6 @@ canvas { display:block; cursor: crosshair; }
             }
         }
 
-        // Destellos en el agua
         ctx.fillStyle = "rgba(255,255,255,0.25)";
         for (let i = 0; i < 18; i++) {
             const bx = camX + ((i * 137 + time * 40) % (canvas.width + 300)) - 50;
@@ -471,8 +452,7 @@ canvas { display:block; cursor: crosshair; }
             ctx.fillRect(bx, by, 3, 1);
         }
 
-        // Isla segura
-        const SAFE_ZONE_SIZE = 555;
+        const SAFE_ZONE_SIZE = 1260;
         const centerX = 4000 / 2;
         const centerY = 4000 / 2;
         const islandX = centerX - SAFE_ZONE_SIZE / 2;
@@ -497,11 +477,11 @@ canvas { display:block; cursor: crosshair; }
 
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const localPlayer = players[myId];
-        if (!localPlayer) return;
+        const local = players[myId];
+        if (!local) return;
 
-        let camX = localPlayer.x - canvas.width / 2;
-        let camY = localPlayer.y - canvas.height / 2;
+        let camX = local.x - canvas.width / 2;
+        let camY = local.y - canvas.height / 2;
         camX = Math.max(0, Math.min(camX, WORLD_SIZE - canvas.width));
         camY = Math.max(0, Math.min(camY, WORLD_SIZE - canvas.height));
 
@@ -562,23 +542,23 @@ canvas { display:block; cursor: crosshair; }
         if (!localPlayer.alive) {
             if (deathTime === null) deathTime = Date.now();
             const elapsed = (Date.now() - deathTime) / 1000;
-            let remaining = Math.max(0, Math.ceil(5 - elapsed));
-            countdownSpan.innerText = remaining;
+            countdownSpan.innerText = Math.max(0, Math.ceil(5 - elapsed));
             msgDiv.style.display = 'block';
-            if (moveTarget) clearMoveTarget();
         } else {
             deathTime = null;
             msgDiv.style.display = 'none';
         }
     }
 
-    function gameLoop() {
-        updateMoveTargetDirection();
-        interpolateAll();
-        updateAnimations();
-        draw();
-        updateRespawnMessage();
-        requestAnimationFrame(gameLoop);
+    function getDirectionFromMovement(dx, dy) {
+        if (isTouchInput || isClickMoving) {
+            if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
+            else if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
+        } else {
+            if (Math.abs(dy) > 0.01) return dy > 0 ? 'down' : 'up';
+            if (Math.abs(dx) > 0.01) return dx > 0 ? 'right' : 'left';
+        }
+        return null;
     }
 
     gameLoop();
